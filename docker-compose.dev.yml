@@ -1,0 +1,23 @@
+version: "3.9"
+
+# Dev overrides — mounts source for hot reload
+# Usage: make dev
+
+services:
+  web-search-mcp:
+    volumes:
+      - ./mcp_servers/web_search:/app
+    environment:
+      - WATCHFILES_FORCE_POLLING=true
+
+  arxiv-mcp:
+    volumes:
+      - ./mcp_servers/arxiv:/app
+    environment:
+      - WATCHFILES_FORCE_POLLING=true
+
+  github-mcp:
+    volumes:
+      - ./mcp_servers/github:/app
+    environment:
+      - WATCHFILES_FORCE_POLLING=true
