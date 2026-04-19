@@ -1,0 +1,44 @@
+# See https://pre-commit.com for more information
+default_language_version:
+  python: python3.11
+
+repos:
+  # === General file hygiene ===
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace        # Remove trailing spaces
+      - id: end-of-file-fixer          # Ensure every file ends with a newline
+      - id: check-yaml                 # Validate all .yaml files are parseable
+      - id: check-toml                 # Validate pyproject.toml syntax
+      - id: check-merge-conflict       # Block accidental merge conflict markers
+      - id: check-added-large-files    # Block files > 500KB from being committed
+        args: ['--maxkb=500']
+      - id: debug-statements           # Catch forgotten pdb/breakpoint() calls
+      - id: detect-private-key         # CRITICAL: block accidental key commits
+      - id: no-commit-to-branch        # Protect main branch from direct pushes
+        args: ['--branch', 'main']
+
+  # === Python import sorting ===
+  - repo: https://github.com/pycqa/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]   # Compatible with black formatter style
+
+  # === Python fast linting + formatting (ruff does both) ===
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.11
+    hooks:
+      - id: ruff                       # Linting: catches bugs, style issues
+        args: [--fix]                  # Auto-fix what can be auto-fixed
+      - id: ruff-format                # Formatting: replaces black
+
+  # === Static type checking ===
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.20.1
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports]
+        # Only type-check the main source folders, not tests
+        files: ^(agent|mcp_servers|api|config|utils)/
