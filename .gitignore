@@ -5,6 +5,8 @@
 # Virtual environment
 .venv/
 
+repo_*
+
 # Python cache
 __pycache__/
 *.pyc
