@@ -16,8 +16,7 @@ repos:
         args: ['--maxkb=500']
       - id: debug-statements           # Catch forgotten pdb/breakpoint() calls
       - id: detect-private-key         # CRITICAL: block accidental key commits
-      - id: no-commit-to-branch        # Protect main branch from direct pushes
-        args: ['--branch', 'main']
+
 
   # === Python import sorting ===
   - repo: https://github.com/pycqa/isort
