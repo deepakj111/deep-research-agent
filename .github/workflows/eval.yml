@@ -1,0 +1,9 @@
+# This workflow is activated in Phase 3 (Observability & Evaluation)
+# It runs the LLM-as-judge benchmark pipeline on every push to main
+# See: evaluation/run_benchmark.py and evaluation/benchmark_queries.json
+#
+# TODO Phase 3: Uncomment and populate this workflow
+# name: Agent Quality Evaluation
+# on:
+#   push:
+#     branches: [main]

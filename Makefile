@@ -22,3 +22,8 @@ build:
 clean:
 	docker compose down -v
 	find . -type d -name __pycache__ -exec rm -rf {} +
+
+security:
+	uv run uv-secure uv.lock
+	uv export --format requirements-txt --no-emit-project > /tmp/req-audit.txt && uv run pip-audit -r /tmp/req-audit.txt
+	uv run bandit -r agent/ mcp_servers/ api/ -ll -ii

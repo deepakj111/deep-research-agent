@@ -1,0 +1,40 @@
+name: Security — Dependency Audit
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 9 * * 1'   # Every Monday 9am UTC — catches NEW CVEs in old deps
+
+jobs:
+  audit:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.7"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run uv-secure lock file scan
+        run: uv run uv-secure uv.lock
+
+      - name: Run pip-audit CVE scan
+        run: |
+          uv export --format requirements-txt --no-emit-project > /tmp/req-audit.txt
+          uv run pip-audit -r /tmp/req-audit.txt
+
+      - name: Run Bandit static security analysis
+        run: uv run bandit -r agent/ mcp_servers/ api/ -ll -ii
