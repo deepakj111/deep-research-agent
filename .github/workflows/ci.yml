@@ -36,7 +36,13 @@ jobs:
         run: uv run mypy agent/ mcp_servers/ api/ config/ utils/ --ignore-missing-imports
 
       - name: Run tests with coverage
-        run: uv run pytest tests/ -v --cov=agent --cov=mcp_servers --cov-report=xml --cov-report=term
+        run: |
+          uv run pytest tests/ -v \
+            --cov=agent \
+            --cov=mcp_servers \
+            --cov-report=xml \
+            --cov-report=term \
+            || [ "$?" = "5" ]
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4

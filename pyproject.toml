@@ -62,6 +62,7 @@ exclude = ["tests/", ".venv/"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-v"
 
 [tool.coverage.run]
 source = ["agent", "mcp_servers", "api", "config", "utils"]
