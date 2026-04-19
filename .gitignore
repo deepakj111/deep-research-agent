@@ -1,0 +1,23 @@
+
+# Secrets
+.env
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Database files
+*.db
+
+# Benchmark raw results
+evaluation/results/*.json
+
+# Streamlit
+.streamlit/
+
+# PDF outputs
+*.pdf

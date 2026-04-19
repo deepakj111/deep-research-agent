@@ -1,0 +1,9 @@
+name: deep
+description: "Comprehensive research: 8-12 min"
+max_web_results: 8
+max_arxiv_papers: 5
+max_github_repos: 5
+llm_model: gpt-4o
+max_iterations: 15
+synthesis_depth: comprehensive
+query_decomposition: depth-first
