@@ -1,3 +1,4 @@
+# agent/nodes/web_agent.py
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agent.circuit_breaker import circuit_breakers
@@ -18,8 +19,15 @@ def load_profile(name: str) -> dict:
 
 
 async def run(state: ResearchState) -> dict:
-    covered = len(state.get("findings", []))
-    subquestion = state["subquestions"][covered]
+    # When called via Send, subquestions contains exactly 1 item
+    # When called sequentially, use coverage index as fallback
+    subquestions = state.get("subquestions", [])
+    if len(subquestions) == 1:
+        subquestion = subquestions[0]
+    else:
+        covered = len(state.get("findings", []))
+        subquestion = subquestions[covered]
+
     profile = load_profile(state.get("profile", "fast"))
     max_results = profile.get("max_web_results", 3)
 

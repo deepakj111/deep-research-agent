@@ -1,3 +1,4 @@
+# agent/nodes/arxiv_agent.py
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agent.circuit_breaker import circuit_breakers
@@ -14,8 +15,13 @@ def load_profile(name: str) -> dict:
 
 
 async def run(state: ResearchState) -> dict:
-    covered = len(state.get("findings", []))
-    subquestion = state["subquestions"][covered]
+    subquestions = state.get("subquestions", [])
+    if len(subquestions) == 1:
+        subquestion = subquestions[0]
+    else:
+        covered = len(state.get("findings", []))
+        subquestion = subquestions[covered]
+
     profile = load_profile(state.get("profile", "fast"))
     max_papers = profile.get("max_arxiv_papers", 2)
 

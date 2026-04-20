@@ -1,10 +1,15 @@
+# mcp_servers/arxiv/server.py
 import json
+import os
 import sqlite3
+import sys
 import time
 import xml.etree.ElementTree as ET
 
 import httpx
 from fastmcp import FastMCP
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 mcp = FastMCP("arxiv-server")
 
@@ -34,6 +39,7 @@ def _cache_set(key: str, value: list) -> None:
 
 
 def _parse_atom(xml_text: str) -> list[dict]:
+    """Parse arXiv Atom XML feed into a list of paper dicts."""
     root = ET.fromstring(xml_text)  # nosec B314
     papers = []
     for entry in root.findall(f"{ARXIV_NS}entry"):
@@ -58,7 +64,13 @@ def _parse_atom(xml_text: str) -> list[dict]:
 
 @mcp.tool()
 async def fetch_papers(query: str, max_papers: int = 5) -> list[dict]:
-    """Search arXiv for academic papers. Returns structured paper metadata."""
+    """
+    Search arXiv for academic papers matching the query.
+
+    Returns a list of paper dicts with fields matching the ArxivPaper
+    Pydantic model: arxiv_id, title, abstract, authors, published_date,
+    url, citation_count, trust_score.
+    """
     cache_key = f"arxiv:{query}:{max_papers}"
     cached = _cache_get(cache_key)
     if cached:

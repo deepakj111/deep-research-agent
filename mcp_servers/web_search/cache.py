@@ -1,17 +1,23 @@
 # mcp_servers/web_search/cache.py
 import json
+import sqlite3
 import time
 
 
 class CacheLayer:
-    def __init__(self, db_path: str = ".cache.db", ttl_seconds: int = 3600) -> None:
-        import sqlite3
+    """
+    SQLite-backed result cache for web search queries.
 
+    Keys are arbitrary strings (e.g. "web:{query}:{max_results}").
+    Values are JSON-serialisable lists (the raw normalised results list).
+    Expired rows are read-through filtered and lazily purged.
+    """
+
+    def __init__(self, db_path: str = ".cache.db", ttl_seconds: int = 3600) -> None:
         self.ttl = ttl_seconds
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.execute(
-            """CREATE TABLE IF NOT EXISTS cache
-               (key TEXT PRIMARY KEY, value TEXT, expires_at REAL)"""
+            "CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT, expires_at REAL)"
         )
         self.conn.commit()
 

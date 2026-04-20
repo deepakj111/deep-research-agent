@@ -1,5 +1,5 @@
 # agent/graph.py
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
 
 from agent.nodes import (
@@ -31,9 +31,11 @@ workflow.set_entry_point("classifier")
 workflow.add_edge("classifier", "planner")
 workflow.add_edge("planner", "supervisor")
 
-workflow.add_edge("web_agent", "supervisor")
-workflow.add_edge("arxiv_agent", "supervisor")
-workflow.add_edge("github_agent", "supervisor")
+# Agent nodes feed back to supervisor after each individual call
+# (Send-based fan-out means all agents run in parallel, then reconverge at critic)
+workflow.add_edge("web_agent", "critic")
+workflow.add_edge("arxiv_agent", "critic")
+workflow.add_edge("github_agent", "critic")
 
 workflow.add_conditional_edges(
     "critic",
@@ -47,8 +49,8 @@ workflow.add_conditional_edges(
 workflow.add_edge("synthesizer", "writer")
 workflow.add_edge("writer", END)
 
-# In-memory checkpointer
-memory = MemorySaver()
+# SqliteSaver persists state across process restarts — required for HITL resume
+memory = SqliteSaver.from_conn_string(".checkpoints.db")
 
 graph = workflow.compile(
     checkpointer=memory,

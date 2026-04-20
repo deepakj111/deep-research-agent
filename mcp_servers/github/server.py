@@ -1,10 +1,14 @@
+# mcp_servers/github/server.py
 import json
 import os
 import sqlite3
+import sys
 import time
 
 import httpx
 from fastmcp import FastMCP
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 mcp = FastMCP("github-server")
 
@@ -34,7 +38,13 @@ def _cache_set(key: str, value: list) -> None:
 
 @mcp.tool()
 async def search_repos(topic: str, max_repos: int = 5) -> list[dict]:
-    """Search GitHub repositories by topic/keyword. Returns structured repo metadata."""
+    """
+    Search GitHub repositories by topic/keyword.
+
+    Returns a list of repo dicts with fields matching the GitHubRepo
+    Pydantic model: name, url, description, stars, language,
+    last_updated, trust_score.
+    """
     cache_key = f"github:{topic}:{max_repos}"
     cached = _cache_get(cache_key)
     if cached:

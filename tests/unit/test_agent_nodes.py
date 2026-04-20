@@ -102,3 +102,146 @@ class TestWriterNode:
         result = await run(base_state)
         assert result["final_report"].sources is not None
         assert len(result["final_report"].sources) > 0
+
+
+class TestSupervisorNode:
+    @pytest.mark.asyncio
+    async def test_fan_out_produces_correct_send_count(self, base_state):
+        from langgraph.types import Command, Send
+
+        from agent.nodes.supervisor import run
+
+        base_state["subquestions"] = ["Q1", "Q2", "Q3"]
+        base_state["findings"] = []
+
+        result = await run(base_state)
+        assert isinstance(result, Command)
+        # 3 subquestions x 3 agents = 9 Send objects
+        assert isinstance(result.goto, list)
+        assert len(result.goto) == 9
+        assert all(isinstance(s, Send) for s in result.goto)
+
+    @pytest.mark.asyncio
+    async def test_empty_subquestions_goes_to_critic(self, base_state):
+        from langgraph.types import Command
+
+        from agent.nodes.supervisor import run
+
+        base_state["subquestions"] = []
+        result = await run(base_state)
+        assert isinstance(result, Command)
+        assert result.goto == "critic"
+
+
+class TestCostEstimator:
+    def test_gpt4o_cost_calculation(self):
+        from utils.cost_estimator import estimate_cost
+
+        cost = estimate_cost("gpt-4o", 1_000_000, 1_000_000)
+        assert cost == 12.50  # 2.50 input + 10.00 output
+
+    def test_gpt4o_mini_cost_calculation(self):
+        from utils.cost_estimator import estimate_cost
+
+        cost = estimate_cost("gpt-4o-mini", 1_000_000, 1_000_000)
+        assert cost == 0.75  # 0.15 input + 0.60 output
+
+    def test_unknown_model_falls_back_to_gpt4o_pricing(self):
+        from utils.cost_estimator import estimate_cost
+
+        cost = estimate_cost("unknown-model", 1_000_000, 0)
+        assert cost == 2.50
+
+    def test_claude_sonnet_cost_calculation(self):
+        from utils.cost_estimator import estimate_cost
+
+        cost = estimate_cost("claude-sonnet-4-5", 1_000_000, 1_000_000)
+        assert cost == 18.00  # 3.00 input + 15.00 output
+
+
+class TestReportFormatter:
+    def test_to_markdown_contains_title(self):
+        from agent.state import Citation, Finding, ReportOutput
+        from utils.report_formatter import to_markdown
+
+        report = ReportOutput(
+            title="Test Report Title",
+            executive_summary="Summary here.",
+            key_findings=[
+                Finding(
+                    claim="Finding one",
+                    citations=[
+                        Citation(
+                            source_url="https://example.com",
+                            title="Source",
+                            exact_snippet="snippet",
+                            source_type="web",
+                            trust_score=0.7,
+                        )
+                    ],
+                    confidence="high",
+                )
+            ],
+            emerging_trends=["Trend A"],
+            recommended_next_steps=["Do X"],
+        )
+        md = to_markdown(report)
+        assert "# Test Report Title" in md
+        assert "## Executive Summary" in md
+        assert "## Key Findings" in md
+        assert "Trend A" in md
+
+
+class TestSynthesizerEdgeCases:
+    @pytest.mark.asyncio
+    async def test_synthesizer_returns_none_report_when_both_models_fail(self, base_state):
+        from unittest.mock import AsyncMock, patch
+
+        from agent.nodes.synthesizer import run
+
+        base_state["findings"] = []
+
+        with (
+            patch("agent.nodes.synthesizer._gpt4o") as mock_gpt,
+            patch("agent.nodes.synthesizer._claude") as mock_claude,
+        ):
+            mock_gpt.ainvoke = AsyncMock(side_effect=RuntimeError("GPT failed"))
+            mock_claude.ainvoke = AsyncMock(side_effect=RuntimeError("Claude failed"))
+
+            result = await run(base_state)
+
+            # When both models fail, final_report must be None
+            assert result["final_report"] is None
+            assert "error_log" in result
+            assert len(result["error_log"]) > 0
+            assert "0/2" in result["thought_log"][0]
+
+    @pytest.mark.asyncio
+    async def test_synthesizer_uses_fallback_when_one_model_fails(self, base_state):
+        from unittest.mock import AsyncMock, patch
+
+        from agent.nodes.synthesizer import run
+        from agent.state import ReportOutput
+
+        base_state["findings"] = []
+
+        fallback_report = ReportOutput(
+            title="Fallback",
+            executive_summary="Summary",
+            key_findings=[],
+            emerging_trends=[],
+            recommended_next_steps=[],
+        )
+
+        with (
+            patch("agent.nodes.synthesizer._gpt4o") as mock_gpt,
+            patch("agent.nodes.synthesizer._claude") as mock_claude,
+        ):
+            mock_gpt.ainvoke = AsyncMock(side_effect=RuntimeError("GPT failed"))
+            mock_claude.ainvoke = AsyncMock(return_value=fallback_report)
+
+            result = await run(base_state)
+
+            assert result["final_report"] is not None
+            assert result["final_report"].title == "Fallback"
+            assert "1/2" in result["thought_log"][0]

@@ -1,51 +1,29 @@
-from typing import Literal
-
-import yaml
-from langchain_openai import ChatOpenAI
-from langgraph.types import Command
-from pydantic import BaseModel
+# agent/nodes/supervisor.py
+from langgraph.types import Command, Send
 
 from agent.state import ResearchState
 
-with open("agent/prompts/supervisor.yaml") as f:
-    _prompts = yaml.safe_load(f)
-
-SUPERVISOR_PROMPT = _prompts["routing_prompt"]
-
-
-class RouterDecision(BaseModel):
-    next: Literal["web_agent", "arxiv_agent", "github_agent", "critic"]
-    reasoning: str
-    current_subquestion: str
-
-
-_llm = ChatOpenAI(model="gpt-4o").with_structured_output(RouterDecision)
-
 
 async def run(state: ResearchState) -> Command:
-    covered = len(state.get("findings", []))
-    total = len(state.get("subquestions", []))
+    subquestions = state.get("subquestions", [])
+    total = len(subquestions)
 
-    if covered >= total:
+    if total == 0:
         return Command(goto="critic")
 
-    current_q = state["subquestions"][covered]
+    # Fan-out: dispatch ALL subquestions to all 3 agents in one shot.
+    # We always do this — supervisor is only called once per research cycle.
+    # After all Send tasks complete, each agent routes back to critic.
+    sends = []
+    for subquestion in subquestions:
+        for agent in ["web_agent", "arxiv_agent", "github_agent"]:
+            sends.append(Send(agent, {**state, "subquestions": [subquestion]}))
 
-    decision: RouterDecision = await _llm.ainvoke(  # type: ignore[assignment]
-        SUPERVISOR_PROMPT.format(
-            subquestion=current_q,
-            covered=covered,
-            total=total,
-        )
+    log = (
+        f"[Supervisor] Parallel fan-out: {total} subquestions "
+        f"× 3 agents = {len(sends)} concurrent tasks."
     )
-
     return Command(
-        goto=decision.next,
-        update={
-            "thought_log": [
-                f"[Supervisor] Dispatching sub-question {covered + 1}/{total} "
-                f"to '{decision.next}': {current_q[:80]}... "
-                f"Reason: {decision.reasoning}"
-            ]
-        },
+        goto=sends,
+        update={"thought_log": [log]},
     )

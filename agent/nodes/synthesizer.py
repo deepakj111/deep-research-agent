@@ -1,10 +1,13 @@
+# agent/nodes/synthesizer.py
 import asyncio
+from typing import Any
 
 import yaml
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
-from agent.state import ReportOutput, ResearchState
+from agent.state import ContradictionRecord, ReportOutput, ResearchState
 from config.settings import settings
 
 with open("agent/prompts/synthesizer.yaml") as f:
@@ -15,10 +18,17 @@ RECONCILE_PROMPT = _prompts["reconcile_prompt"]
 
 _gpt4o = ChatOpenAI(model=settings.default_model).with_structured_output(ReportOutput)
 _claude = ChatAnthropic(model_name=settings.secondary_model).with_structured_output(ReportOutput)  # type: ignore[call-arg]
-_reconciler = ChatOpenAI(model=settings.default_model)
 
 
-def build_synthesis_context(findings) -> str:
+class ReconcileOutput(BaseModel):
+    contradictions: list[ContradictionRecord]
+    summary: str
+
+
+_reconciler = ChatOpenAI(model=settings.default_model).with_structured_output(ReconcileOutput)
+
+
+def build_synthesis_context(findings: list[Any]) -> str:
     sections = []
     for f in findings:
         section = [f"### Sub-question: {f.subquestion}"]
@@ -52,16 +62,29 @@ async def run(state: ResearchState) -> dict:
     gpt_report: ReportOutput | Exception = results[0]  # type: ignore[assignment]
     claude_report: ReportOutput | Exception = results[1]  # type: ignore[assignment]
 
-    disagreements: list[str] = []
+    gpt_failed = isinstance(gpt_report, Exception)
+    claude_failed = isinstance(claude_report, Exception)
 
-    if isinstance(gpt_report, Exception):
+    contradictions: list[ContradictionRecord] = []
+
+    if gpt_failed and claude_failed:
+        # Both models failed — return None so writer.py handles it gracefully
+        # via its existing "No report to write" error_log path.
+        return {
+            "final_report": None,
+            "error_log": [
+                f"[Synthesizer] Both models failed. "
+                f"GPT: {str(gpt_report)[:100]} | Claude: {str(claude_report)[:100]}"
+            ],
+            "thought_log": ["[Synthesizer] 0/2 models succeeded. Cannot produce report."],
+        }
+
+    if gpt_failed:
         final = claude_report
-        disagreements.append(f"GPT-4o failed: {str(gpt_report)[:100]}")
-    elif isinstance(claude_report, Exception):
+    elif claude_failed:
         final = gpt_report
-        disagreements.append(f"Claude failed: {str(claude_report)[:100]}")
     else:
-        reconcile_response = await _reconciler.ainvoke(
+        reconcile: ReconcileOutput = await _reconciler.ainvoke(  # type: ignore[assignment]
             RECONCILE_PROMPT.format(
                 query=state["query"],
                 summary_a=gpt_report.executive_summary,  # type: ignore[union-attr]
@@ -69,12 +92,15 @@ async def run(state: ResearchState) -> dict:
             )
         )
         final = gpt_report
-        final.model_disagreements = [str(reconcile_response.content)[:500]]  # type: ignore[union-attr]
+        contradictions = reconcile.contradictions
+        final.contradictions = contradictions  # type: ignore[union-attr]
+        final.model_disagreements = [reconcile.summary]  # type: ignore[union-attr]
 
-    failed = sum([isinstance(gpt_report, Exception), isinstance(claude_report, Exception)])
+    failed = sum([gpt_failed, claude_failed])
     return {
         "final_report": final,
         "thought_log": [
-            f"[Synthesizer] Used {2 - failed}/2 models. {len(disagreements)} disagreements flagged."
+            f"[Synthesizer] Used {2 - failed}/2 models. "
+            f"{len(contradictions)} contradictions detected."
         ],
     }

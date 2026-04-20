@@ -1,3 +1,4 @@
+# agent/state.py
 import operator
 from datetime import datetime
 from typing import Annotated, TypedDict
@@ -66,6 +67,14 @@ class Finding(BaseModel):
     confidence: str  # "high" | "medium" | "low"
 
 
+# Phase 2 — structured contradiction tracking
+class ContradictionRecord(BaseModel):
+    claim_a: str
+    claim_b: str
+    resolution: str
+    preferred_source: str  # "gpt4o" | "claude" | "unresolved"
+
+
 class ReportOutput(BaseModel):
     title: str
     executive_summary: str
@@ -73,6 +82,7 @@ class ReportOutput(BaseModel):
     emerging_trends: list[str]
     recommended_next_steps: list[str]
     model_disagreements: list[str] = Field(default_factory=list)
+    contradictions: list[ContradictionRecord] = Field(default_factory=list)
     sources: list[Citation] = Field(default_factory=list)
     version: int = 1
 

@@ -1,7 +1,8 @@
+# agent/nodes/critic.py
 import yaml
 from langchain_openai import ChatOpenAI
 
-from agent.state import CritiqueOutput, ResearchState
+from agent.state import CritiqueOutput, ResearchState, RunMetadata
 from config.settings import settings
 
 with open("agent/prompts/critic.yaml") as f:
@@ -66,12 +67,20 @@ async def run(state: ResearchState) -> dict:
         )
     )
 
-    if meta:
-        meta.iteration_count = iteration_count + 1
+    # Build a new RunMetadata with incremented iteration_count.
+    # Never mutate in place — always return the updated object so LangGraph persists it.
+    updated_meta = RunMetadata(
+        **(
+            meta.model_dump()
+            if meta
+            else {"run_id": state.get("run_id", ""), "profile": state.get("profile", "fast")}
+        ),
+    )
+    updated_meta.iteration_count = iteration_count + 1
 
     return {
         "critique": critique,
-        "run_metadata": meta,
+        "run_metadata": updated_meta,
         "thought_log": [
             f"[Critic] Coverage={critique.coverage_score:.2f} | "
             f"Recency={critique.recency_score:.2f} | "

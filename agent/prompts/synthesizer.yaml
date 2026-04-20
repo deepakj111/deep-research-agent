@@ -26,5 +26,11 @@ reconcile_prompt: |
 
   Summary B (Claude): {summary_b}
 
-  List any factual contradictions, conflicting claims, or significant emphasis differences.
-  For each, state which source is more credible and why. Keep response under 500 chars.
+  For each factual contradiction or conflicting claim, produce a ContradictionRecord with:
+  - claim_a: the claim from GPT-4o
+  - claim_b: the conflicting claim from Claude
+  - resolution: which is more credible and why (max 100 chars)
+  - preferred_source: "gpt4o" | "claude" | "unresolved"
+
+  Also provide a summary string of overall model agreement level.
+  Output structured JSON only.

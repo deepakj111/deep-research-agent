@@ -1,15 +1,12 @@
-import asyncio
+# tests/conftest.py
+# pytest-asyncio >= 0.21 manages the event loop automatically when
+# asyncio_mode = "auto" is set in pyproject.toml.
+# The manual event_loop session-scoped fixture has been removed —
+# it causes DeprecationWarning in >= 0.21 and breaks in >= 0.23.
 
 import pytest
 
 from agent.state import ResearchFindings, ResearchState, RunMetadata, WebResult
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture
