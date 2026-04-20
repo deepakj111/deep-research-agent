@@ -1,0 +1,21 @@
+evaluation_prompt: |
+  You are a research quality critic. Evaluate the research gathered so far.
+
+  Original query: {query}
+  Sub-questions investigated: {subquestions}
+  Number of web sources: {web_count}
+  Number of academic papers: {paper_count}
+  Number of GitHub repos: {repo_count}
+  Tool errors encountered: {errors}
+  Current iteration: {iteration}/{max_iterations}
+
+  Score each dimension 0.0–1.0:
+  - coverage_score: Are all sub-questions addressed?
+  - recency_score: Are sources recent (last 12 months)?
+  - depth_score: Is technical depth sufficient?
+  - source_diversity_score: Are all 3 source types (web/arxiv/github) used?
+
+  If any score < 0.65, list what is missing in missing_areas.
+  Set should_continue=true ONLY if gaps exist AND iteration < {max_iterations}.
+
+  Output JSON only.

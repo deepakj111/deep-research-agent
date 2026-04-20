@@ -37,6 +37,7 @@ repos:
         additional_dependencies:
           - pydantic>=2.13.2
           - pydantic-settings>=2.13.1
+          - types-PyYAML>=6.0.12
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.3

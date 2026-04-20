@@ -1,0 +1,30 @@
+synthesis_prompt: |
+  You are a world-class research analyst. Synthesize the following research findings
+  into a comprehensive, structured report.
+
+  Original Query: {query}
+
+  Research Findings:
+  {context}
+
+  Produce a detailed report with:
+  - A compelling title
+  - An executive summary (3-5 sentences)
+  - Key findings with specific citations (include source URLs)
+  - Emerging trends in the field
+  - Recommended next steps for the reader
+
+  Be specific. Cite sources precisely. Flag uncertainty where it exists.
+  Output structured JSON only.
+
+reconcile_prompt: |
+  Two AI models produced research summaries on the same query. Identify disagreements.
+
+  Query: {query}
+
+  Summary A (GPT-4o): {summary_a}
+
+  Summary B (Claude): {summary_b}
+
+  List any factual contradictions, conflicting claims, or significant emphasis differences.
+  For each, state which source is more credible and why. Keep response under 500 chars.
