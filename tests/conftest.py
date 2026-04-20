@@ -4,7 +4,12 @@
 # The manual event_loop session-scoped fixture has been removed —
 # it causes DeprecationWarning in >= 0.21 and breaks in >= 0.23.
 
+import os
+
 import pytest
+
+os.environ["OPENAI_API_KEY"] = "test-openai-key-for-pytest"
+os.environ["ANTHROPIC_API_KEY"] = "test-anthropic-key-for-pytest"
 
 from agent.state import ResearchFindings, ResearchState, RunMetadata, WebResult
 
