@@ -4,6 +4,7 @@ import sys
 
 import httpx
 from fastmcp import FastMCP
+from starlette.responses import JSONResponse
 
 # Ensure the local directory is on sys.path so `cache` and `auth` resolve
 # correctly both when running directly and inside Docker.
@@ -73,9 +74,7 @@ async def search_web(ctx, query: str, max_results: int = 5) -> list[dict]:
 
 
 @mcp.custom_route("/health", methods=["GET"])
-async def health(request) -> dict:
-    from starlette.responses import JSONResponse
-
+async def health(request) -> JSONResponse:
     return JSONResponse({"status": "healthy", "server": "web-search-mcp"})
 
 

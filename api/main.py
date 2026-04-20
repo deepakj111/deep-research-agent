@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 
 from agent.graph import graph
@@ -31,7 +32,7 @@ class ApproveRequest(BaseModel):
 @app.post("/research/stream")
 async def stream_research(request: ResearchRequest):
     run_id = str(uuid.uuid4())
-    thread_config = {"configurable": {"thread_id": run_id}}
+    thread_config: RunnableConfig = {"configurable": {"thread_id": run_id}}
 
     async def event_generator():
         async for event in graph.astream_events(
@@ -108,7 +109,7 @@ async def stream_research(request: ResearchRequest):
 
 @app.post("/research/approve")
 async def approve_plan(request: ApproveRequest):
-    thread_config = {"configurable": {"thread_id": request.thread_id}}
+    thread_config: RunnableConfig = {"configurable": {"thread_id": request.thread_id}}
     state_snapshot = graph.get_state(thread_config)
 
     if not state_snapshot:
@@ -168,7 +169,7 @@ async def approve_plan(request: ApproveRequest):
 
 @app.get("/research/state/{thread_id}")
 async def get_research_state(thread_id: str):
-    thread_config = {"configurable": {"thread_id": thread_id}}
+    thread_config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
     state_snapshot = graph.get_state(thread_config)
     if not state_snapshot:
         raise HTTPException(status_code=404, detail="Thread not found.")

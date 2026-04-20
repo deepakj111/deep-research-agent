@@ -1,4 +1,6 @@
 # agent/graph.py
+import sqlite3
+
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
 
@@ -50,7 +52,8 @@ workflow.add_edge("synthesizer", "writer")
 workflow.add_edge("writer", END)
 
 # SqliteSaver persists state across process restarts — required for HITL resume
-memory = SqliteSaver.from_conn_string(".checkpoints.db")
+conn = sqlite3.connect(".checkpoints.db", check_same_thread=False)
+memory = SqliteSaver(conn)
 
 graph = workflow.compile(
     checkpointer=memory,

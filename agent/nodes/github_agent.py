@@ -37,8 +37,8 @@ async def run(state: ResearchState) -> dict:
                     "headers": {"Authorization": f"Bearer {get_jwt_token()}"},
                 }
             }
-        ) as client:
-            tools = client.get_tools()
+        ) as client:  # type: ignore[misc]
+            tools = await client.get_tools()
             search_tool = next(t for t in tools if t.name == "search_repos")
 
             async def _call():

@@ -7,6 +7,7 @@ import time
 
 import httpx
 from fastmcp import FastMCP
+from starlette.responses import JSONResponse
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -91,9 +92,7 @@ async def search_repos(topic: str, max_repos: int = 5) -> list[dict]:
 
 
 @mcp.custom_route("/health", methods=["GET"])
-async def health(request) -> dict:
-    from starlette.responses import JSONResponse
-
+async def health(request) -> JSONResponse:
     return JSONResponse({"status": "healthy", "server": "github-mcp"})
 
 
