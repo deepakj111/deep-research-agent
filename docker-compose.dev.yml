@@ -1,7 +1,5 @@
-version: "3.9"
-
 # Dev overrides — mounts source for hot reload
-# Usage: make dev
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 services:
   web-search-mcp:
@@ -19,5 +17,28 @@ services:
   github-mcp:
     volumes:
       - ./mcp_servers/github:/app
+    environment:
+      - WATCHFILES_FORCE_POLLING=true
+
+  agent:
+    volumes:
+      - ./agent:/app/agent
+      - ./api:/app/api
+      - ./config:/app/config
+      - ./observability:/app/observability
+      - ./utils:/app/utils
+    command: >
+      uv run uvicorn api.main:app
+      --host 0.0.0.0 --port 8080 --reload
+    environment:
+      - WATCHFILES_FORCE_POLLING=true
+
+  streamlit:
+    volumes:
+      - ./app:/app/app
+      - ./agent:/app/agent
+      - ./config:/app/config
+      - ./observability:/app/observability
+      - ./utils:/app/utils
     environment:
       - WATCHFILES_FORCE_POLLING=true

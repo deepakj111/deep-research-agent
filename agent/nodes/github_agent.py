@@ -5,6 +5,8 @@ import time
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agent.circuit_breaker import circuit_breakers
+from agent.middleware.pii_filter import filter_pii_simple
+from agent.retry_policy import ToolDegradedError, retry_with_policy
 from agent.state import GitHubRepo, ResearchFindings, ResearchState
 from config.settings import settings
 from observability.tracer import ToolCallRecord, get_tracer
@@ -46,12 +48,24 @@ async def run(state: ResearchState) -> dict:
             tools = await client.get_tools()
             search_tool = next(t for t in tools if t.name == "search_repos")
 
-            async def _call():
-                return await search_tool.ainvoke({"topic": subquestion, "max_repos": max_repos})
+            async def _call_with_cb():
+                async def _inner():
+                    return await search_tool.ainvoke({"topic": subquestion, "max_repos": max_repos})
 
-            raw = await circuit_breakers["search_repos"].call(_call())
+                return await circuit_breakers["search_repos"].call(_inner())
+
+            raw = await retry_with_policy("search_repos", _call_with_cb)
+
             if isinstance(raw, list):
                 repos = [GitHubRepo(**r) for r in raw]
+
+            # PII scrub string fields after model construction
+            for repo in repos:
+                repo.description = filter_pii_simple(repo.description)
+    except ToolDegradedError as e:
+        # Non-critical tool — degrade gracefully per policy
+        errors.append(e.failure_note)
+        success = False
     except Exception as e:
         error_msg = f"search_repos [{type(e).__name__}]: {str(e)[:200]}"
         errors.append(error_msg)

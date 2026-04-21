@@ -4,6 +4,7 @@ import sqlite3
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
 
+from agent.budget_guard import check_budget
 from agent.nodes import (
     arxiv_agent,
     classifier,
@@ -33,15 +34,19 @@ workflow.set_entry_point("classifier")
 workflow.add_edge("classifier", "planner")
 workflow.add_edge("planner", "supervisor")
 
-# Agent nodes feed back to supervisor after each individual call
+# Agent nodes feed back to critic after each individual call
 # (Send-based fan-out means all agents run in parallel, then reconverge at critic)
 workflow.add_edge("web_agent", "critic")
 workflow.add_edge("arxiv_agent", "critic")
 workflow.add_edge("github_agent", "critic")
 
+# Budget guard wraps the critic's should_continue decision:
+# - checks iteration count against settings.max_iterations
+# - checks estimated_cost_usd against settings.max_cost_per_run_usd
+# - if budget OK, delegates to critic.should_continue
 workflow.add_conditional_edges(
     "critic",
-    critic.should_continue,
+    check_budget,
     {
         "continue": "supervisor",
         "synthesize": "synthesizer",

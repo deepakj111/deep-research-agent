@@ -54,13 +54,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      # ── Start MCP services ─────────────────────────────────────────────────
-      - name: Start MCP services
-        run: docker compose up -d redis web-search-mcp arxiv-mcp github-mcp
+      # ── Start full Docker stack ─────────────────────────────────────────────
+      - name: Build and start all services
+        run: docker compose up -d --build
         env:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           MCP_JWT_SECRET: ${{ secrets.MCP_JWT_SECRET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
 
       - name: Wait for all services to be healthy
         run: |
@@ -72,6 +75,8 @@ jobs:
           timeout 60 bash -c 'until curl -sf http://localhost:8002/health; do sleep 3; done'
           echo "Waiting for github-mcp..."
           timeout 60 bash -c 'until curl -sf http://localhost:8003/health; do sleep 3; done'
+          echo "Waiting for agent API..."
+          timeout 60 bash -c 'until curl -sf http://localhost:8080/health; do sleep 3; done'
           echo "All services healthy ✓"
 
       # ── Run benchmark ──────────────────────────────────────────────────────

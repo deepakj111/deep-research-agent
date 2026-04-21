@@ -50,3 +50,21 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+
+  docker:
+    name: Docker Build Verification
+    runs-on: ubuntu-latest
+    needs: quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build all Docker images
+        run: docker compose build
+        env:
+          TAVILY_API_KEY: dummy
+          MCP_JWT_SECRET: ci-test-secret-min-32-characters-long
+          GITHUB_TOKEN: dummy
+          OPENAI_API_KEY: dummy
+          ANTHROPIC_API_KEY: dummy
