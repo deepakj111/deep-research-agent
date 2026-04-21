@@ -70,5 +70,5 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["agent", "mcp_servers", "api", "config", "utils"]
+source = ["agent", "mcp_servers", "api", "config", "utils", "observability", "evaluation"]
 omit = ["tests/*", ".venv/*"]

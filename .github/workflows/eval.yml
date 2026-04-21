@@ -1,9 +1,106 @@
-# This workflow is activated in Phase 3 (Observability & Evaluation)
-# It runs the LLM-as-judge benchmark pipeline on every push to main
-# See: evaluation/run_benchmark.py and evaluation/benchmark_queries.json
+name: Agent Quality Evaluation
+
+# Triggered manually (workflow_dispatch) or on a weekly schedule.
+# NOT triggered on every push — benchmark queries cost real money.
 #
-# TODO Phase 3: Uncomment and populate this workflow
-# name: Agent Quality Evaluation
-# on:
-#   push:
-#     branches: [main]
+# To run from the CLI:
+#   gh workflow run eval.yml -f profile=fast -f query_limit=3
+#
+# Required repository secrets:
+#   OPENAI_API_KEY, ANTHROPIC_API_KEY, TAVILY_API_KEY,
+#   GITHUB_TOKEN (already available), MCP_JWT_SECRET,
+#   LANGCHAIN_API_KEY (optional — tracing)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Research profile"
+        required: true
+        default: "fast"
+        type: choice
+        options: [fast, deep]
+      query_limit:
+        description: "Number of benchmark queries (cost control)"
+        required: false
+        default: "3"
+      fail_below:
+        description: "Minimum acceptable average score (0-1)"
+        required: false
+        default: "0.70"
+  schedule:
+    # Weekly Sunday 10:00 UTC — validates main hasn't regressed
+    - cron: "0 10 * * 0"
+
+jobs:
+  benchmark:
+    name: LLM-as-Judge Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # ── Checkout & Python setup ────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.7"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      # ── Start MCP services ─────────────────────────────────────────────────
+      - name: Start MCP services
+        run: docker compose up -d redis web-search-mcp arxiv-mcp github-mcp
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          MCP_JWT_SECRET: ${{ secrets.MCP_JWT_SECRET }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for all services to be healthy
+        run: |
+          echo "Waiting for Redis..."
+          timeout 30 bash -c 'until docker compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; do sleep 2; done'
+          echo "Waiting for web-search-mcp..."
+          timeout 60 bash -c 'until curl -sf http://localhost:8001/health; do sleep 3; done'
+          echo "Waiting for arxiv-mcp..."
+          timeout 60 bash -c 'until curl -sf http://localhost:8002/health; do sleep 3; done'
+          echo "Waiting for github-mcp..."
+          timeout 60 bash -c 'until curl -sf http://localhost:8003/health; do sleep 3; done'
+          echo "All services healthy ✓"
+
+      # ── Run benchmark ──────────────────────────────────────────────────────
+      - name: Run benchmark evaluation
+        run: |
+          uv run python evaluation/run_benchmark.py \
+            --profile "${{ github.event.inputs.profile || 'fast' }}" \
+            --fail-below "${{ github.event.inputs.fail_below || '0.70' }}" \
+            --queries "${{ github.event.inputs.query_limit || '3' }}"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
+          LANGCHAIN_TRACING_V2: "true"
+          LANGCHAIN_PROJECT: "deep-research-agent-eval"
+          MCP_JWT_SECRET: ${{ secrets.MCP_JWT_SECRET }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Upload artefacts ───────────────────────────────────────────────────
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: evaluation/results/
+          retention-days: 90
+
+      # ── Cleanup ────────────────────────────────────────────────────────────
+      - name: Tear down services
+        if: always()
+        run: docker compose down -v

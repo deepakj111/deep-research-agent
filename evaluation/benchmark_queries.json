@@ -1,0 +1,109 @@
+[
+    {
+        "id": "q01",
+        "query": "Latest breakthroughs in quantum error correction and fault-tolerant quantum computing 2025",
+        "domain": "physics",
+        "expected_source_types": [
+            "web",
+            "arxiv",
+            "github"
+        ],
+        "notes": "Should find recent papers and open-source QEC simulators"
+    },
+    {
+        "id": "q02",
+        "query": "State of the art in protein structure prediction and drug discovery post-AlphaFold3",
+        "domain": "biology",
+        "expected_source_types": [
+            "web",
+            "arxiv",
+            "github"
+        ],
+        "notes": "Should cite AlphaFold3 paper and related open-source tools"
+    },
+    {
+        "id": "q03",
+        "query": "Advances in multimodal LLMs: vision-language models and agent capabilities in 2025",
+        "domain": "AI",
+        "expected_source_types": [
+            "web",
+            "arxiv",
+            "github"
+        ],
+        "notes": "High-volume domain — tests source diversity under abundant data"
+    },
+    {
+        "id": "q04",
+        "query": "Recent progress in neuromorphic computing hardware and spiking neural networks",
+        "domain": "hardware",
+        "expected_source_types": [
+            "web",
+            "arxiv",
+            "github"
+        ],
+        "notes": "Niche domain — tests handling of sparse sources"
+    },
+    {
+        "id": "q05",
+        "query": "Open-source AI coding assistants landscape: capabilities, benchmarks, and limitations in 2026",
+        "domain": "AI",
+        "expected_source_types": [
+            "web",
+            "arxiv",
+            "github"
+        ],
+        "notes": "Should find multiple GitHub repos and benchmark papers"
+    },
+    {
+        "id": "q06",
+        "query": "Developments in nuclear fusion energy research and commercial timelines 2024-2025",
+        "domain": "physics",
+        "expected_source_types": [
+            "web",
+            "arxiv"
+        ],
+        "notes": "Should balance news coverage with academic papers"
+    },
+    {
+        "id": "q07",
+        "query": "CRISPR base editing and prime editing clinical trials: efficacy and safety outcomes",
+        "domain": "biology",
+        "expected_source_types": [
+            "web",
+            "arxiv"
+        ],
+        "notes": "Clinical domain requiring high faithfulness score"
+    },
+    {
+        "id": "q08",
+        "query": "Advances in autonomous vehicle perception: sensor fusion, 4D radar, and edge AI 2025",
+        "domain": "robotics",
+        "expected_source_types": [
+            "web",
+            "arxiv",
+            "github"
+        ],
+        "notes": "Technical depth test — should include dataset and model repos"
+    },
+    {
+        "id": "q09",
+        "query": "Post-quantum cryptography standards: NIST PQC finalists adoption and implementation status",
+        "domain": "security",
+        "expected_source_types": [
+            "web",
+            "arxiv",
+            "github"
+        ],
+        "notes": "Should find NIST documentation and crypto library implementations"
+    },
+    {
+        "id": "q10",
+        "query": "LLM agent orchestration frameworks comparison: LangGraph vs AutoGen vs CrewAI in production 2026",
+        "domain": "AI",
+        "expected_source_types": [
+            "web",
+            "github"
+        ],
+        "notes": "Should compare GitHub repos directly — tests github_agent routing"
+    }
+]

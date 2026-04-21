@@ -10,7 +10,7 @@ test:
 	uv run pytest tests/ -v --cov=agent --cov=mcp_servers --cov-report=term || [ "$$?" = "5" ]
 
 benchmark:
-	uv run python evaluation/run_benchmark.py --profile deep --fail-below 0.75
+	uv run python evaluation/run_benchmark.py --profile fast --queries 3 --fail-below 0.75
 
 lint:
 	uv run ruff check .

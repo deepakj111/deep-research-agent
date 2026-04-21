@@ -33,7 +33,7 @@ repos:
     hooks:
       - id: mypy
         args: [--ignore-missing-imports]
-        files: ^(agent|mcp_servers|api|config|utils)/
+        files: ^(agent|mcp_servers|api|config|utils|observability|evaluation)/
         additional_dependencies:
           - pydantic>=2.13.2
           - pydantic-settings>=2.13.1
