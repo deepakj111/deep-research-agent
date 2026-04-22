@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     max_iterations: int = 15
     max_cost_per_run_usd: float = 2.0
 
+    # API Server
+    agent_api_url: str = "http://localhost:8080"
+    agent_api_port: int = 8080
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

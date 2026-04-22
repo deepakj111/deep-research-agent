@@ -1,11 +1,28 @@
 # api/main.py
+"""
+FastAPI gateway for the DeepResearch Agent.
+
+Endpoints:
+  POST  /research/stream           — Start a new SSE-streamed research run
+  POST  /research/approve          — Resume a HITL-paused run
+  GET   /research/state/{tid}      — Current graph state for a thread
+  GET   /research/report/{tid}     — Final report as JSON
+  GET   /research/report/{tid}/pdf — Final report as downloadable PDF
+  GET   /research/report/{tid}/markdown — Final report as downloadable Markdown
+  GET   /research/runs             — Recent run summaries
+  GET   /research/runs/{run_id}    — Full observability detail for a run
+  GET   /health                    — Health check
+"""
+
 import contextlib
 import json
+import logging
 import time
 import uuid
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, StreamingResponse
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 
@@ -13,15 +30,36 @@ from agent.graph import graph
 from agent.state import RunMetadata
 from observability.tracer import get_tracer
 from utils.cost_estimator import estimate_cost
+from utils.report_formatter import export_to_pdf, to_html, to_markdown
 
-app = FastAPI(title="DeepResearch Agent API", version="1.0.0")
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
+    title="DeepResearch Agent API",
+    version="1.0.0",
+    description="Autonomous multi-source research agent powered by LangGraph and MCP servers.",
+)
+
+# ─────────────────────────── CORS Middleware ──────────────────────────────────
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8501",  # Streamlit default
+        "http://localhost:3000",  # Dev
+        "http://streamlit:8501",  # Docker internal
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def sse(data: dict) -> str:
     return f"data: {json.dumps(data)}\n\n"
 
 
-# ─────────────────────────────── Request Models ───────────────────────────────
+# ─────────────────────────── Request Models ───────────────────────────────────
 
 
 class ResearchRequest(BaseModel):
@@ -35,7 +73,7 @@ class ApproveRequest(BaseModel):
     edited_subquestions: list[str] | None = None
 
 
-# ─────────────────────────── Tracer Helper ────────────────────────────────────
+# ─────────────────────── Tracer Helper ────────────────────────────────────────
 
 
 async def _finalize_run(
@@ -73,7 +111,26 @@ async def _finalize_run(
         pass  # intentional — observability is best-effort
 
 
-# ─────────────────────────── Endpoints ───────────────────────────────────────
+# ─────────────────────── Report Retrieval Helpers ─────────────────────────────
+
+
+def _get_report_from_thread(thread_id: str):
+    """Retrieve the final ReportOutput from a completed graph thread."""
+    thread_config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    snapshot = graph.get_state(thread_config)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail=f"Thread '{thread_id}' not found.")
+
+    report = snapshot.values.get("final_report")
+    if not report:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Thread '{thread_id}' has no final report. Research may still be in progress.",
+        )
+    return report
+
+
+# ─────────────────────── Endpoints ───────────────────────────────────────────
 
 
 @app.post("/research/stream")
@@ -270,6 +327,70 @@ async def get_research_state(thread_id: str):
         "findings_count": len(state_snapshot.values.get("findings", [])),
         "approved_plan": state_snapshot.values.get("approved_plan"),
     }
+
+
+# ─────────────────────── Report Endpoints ─────────────────────────────────────
+
+
+@app.get("/research/report/{thread_id}")
+async def get_report(thread_id: str):
+    """Return the final report as JSON."""
+    report = _get_report_from_thread(thread_id)
+    return report.model_dump()
+
+
+@app.get("/research/report/{thread_id}/pdf")
+async def get_report_pdf(thread_id: str):
+    """Return the final report as a downloadable PDF."""
+    report = _get_report_from_thread(thread_id)
+    try:
+        pdf_bytes = export_to_pdf(report)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="research_report_{thread_id[:8]}.pdf"'
+            },
+        )
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail="PDF export requires WeasyPrint. Install with: pip install weasyprint",
+        ) from exc
+    except Exception as exc:
+        logger.exception("PDF generation failed for thread %s", thread_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"PDF generation failed: {type(exc).__name__}: {str(exc)[:200]}",
+        ) from exc
+
+
+@app.get("/research/report/{thread_id}/markdown")
+async def get_report_markdown(thread_id: str):
+    """Return the final report as downloadable Markdown."""
+    report = _get_report_from_thread(thread_id)
+    md_content = to_markdown(report)
+    return Response(
+        content=md_content.encode("utf-8"),
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": f'attachment; filename="research_report_{thread_id[:8]}.md"'
+        },
+    )
+
+
+@app.get("/research/report/{thread_id}/html")
+async def get_report_html(thread_id: str):
+    """Return the final report as styled HTML."""
+    report = _get_report_from_thread(thread_id)
+    html_content = to_html(report)
+    return Response(
+        content=html_content.encode("utf-8"),
+        media_type="text/html",
+    )
+
+
+# ─────────────────────── Observability Endpoints ──────────────────────────────
 
 
 @app.get("/research/runs")
