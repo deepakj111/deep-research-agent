@@ -348,6 +348,10 @@ The FastAPI gateway (`api/main.py`) exposes:
 | `POST /research/stream` | POST | Start a new research run, stream SSE events |
 | `POST /research/approve` | POST | Resume a run paused at the HITL planner interrupt |
 | `GET /research/state/{thread_id}` | GET | Get current graph state for a thread |
+| `GET /research/report/{thread_id}` | GET | Get the final completed report as structured JSON |
+| `GET /research/report/{thread_id}/pdf` | GET | Download the final report as a styled PDF |
+| `GET /research/report/{thread_id}/markdown` | GET | Download the final report as Markdown |
+| `GET /research/report/{thread_id}/html` | GET | Download the final report as styled HTML |
 | `GET /research/runs` | GET | List recent runs from observability DB |
 | `GET /research/runs/{run_id}` | GET | Get full detail for a single run |
 | `GET /health` | GET | Health check |
