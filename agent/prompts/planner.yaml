@@ -9,6 +9,7 @@ user: |
   Difficulty: {difficulty}
   Profile: {profile}
   Number of sub-questions to generate: {n}
+  Strategy: {strategy}
 
   Generate exactly {n} sub-questions that together fully cover the query.
   Each sub-question should be 1-2 sentences, specific, and researchable via
