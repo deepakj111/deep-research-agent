@@ -69,9 +69,9 @@ TOOL_ERROR_POLICIES: dict[str, ToolErrorPolicy] = {
 def _compute_delay(policy: ToolErrorPolicy, attempt: int) -> float:
     """Compute delay in seconds for the given attempt number (0-indexed)."""
     if policy.backoff == "exponential":
-        return policy.base_delay_seconds * (2**attempt)
+        return float(policy.base_delay_seconds * (2**attempt))
     # linear
-    return policy.base_delay_seconds
+    return float(policy.base_delay_seconds)
 
 
 async def retry_with_policy(

@@ -1,3 +1,5 @@
+import functools
+
 import yaml
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
@@ -17,7 +19,15 @@ class PlanOutput(BaseModel):
     reasoning: str
 
 
-_llm = ChatOpenAI(model=settings.default_model).with_structured_output(PlanOutput)
+_planner_llm = None
+
+
+def _get_planner_llm():
+    global _planner_llm
+    if _planner_llm is None:
+        _planner_llm = ChatOpenAI(model=settings.default_model).with_structured_output(PlanOutput)
+    return _planner_llm
+
 
 NUM_QUESTIONS = {
     "narrow": 3,
@@ -44,14 +54,11 @@ STRATEGIES = {
     ),
 }
 
-_profile_cache: dict = {}
 
-
+@functools.lru_cache(maxsize=16)
 def load_profile(name: str) -> dict:
-    if name not in _profile_cache:
-        with open(f"config/profiles/{name}.yaml") as f:
-            _profile_cache[name] = yaml.safe_load(f)
-    return _profile_cache[name]
+    with open(f"config/profiles/{name}.yaml") as f:
+        return yaml.safe_load(f)
 
 
 async def run(state: ResearchState) -> dict:
@@ -63,7 +70,8 @@ async def run(state: ResearchState) -> dict:
     strategy_key = profile_cfg.get("query_decomposition", "breadth-first")
     strategy_text = STRATEGIES.get(strategy_key, STRATEGIES["breadth-first"]).format(n=n)
 
-    result: PlanOutput = await _llm.ainvoke(  # type: ignore[assignment]
+    llm = _get_planner_llm()
+    result: PlanOutput = await llm.ainvoke(  # type: ignore[assignment]
         [
             {"role": "system", "content": PLANNER_SYSTEM},
             {

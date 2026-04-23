@@ -2,6 +2,7 @@
 import json
 import sqlite3
 import time
+import typing
 
 
 class CacheLayer:
@@ -21,7 +22,7 @@ class CacheLayer:
         )
         self.conn.commit()
 
-    def get(self, key: str) -> list | None:
+    def get(self, key: str) -> list[typing.Any] | None:
         row = self.conn.execute(
             "SELECT value, expires_at FROM cache WHERE key = ?", (key,)
         ).fetchone()
@@ -29,7 +30,7 @@ class CacheLayer:
             return json.loads(row[0])
         return None
 
-    def set(self, key: str, value: list) -> None:
+    def set(self, key: str, value: list[typing.Any]) -> None:
         self.conn.execute(
             "INSERT OR REPLACE INTO cache VALUES (?, ?, ?)",
             (key, json.dumps(value), time.time() + self.ttl),

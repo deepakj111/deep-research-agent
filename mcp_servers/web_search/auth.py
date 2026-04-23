@@ -1,5 +1,6 @@
 # mcp_servers/web_search/auth.py
 import os
+import typing
 from functools import wraps
 
 import jwt
@@ -7,7 +8,9 @@ import jwt
 SECRET = os.environ.get("MCP_JWT_SECRET", "")
 
 
-def require_auth(func):
+def require_auth(
+    func: typing.Callable[..., typing.Awaitable[typing.Any]],
+) -> typing.Callable[..., typing.Awaitable[typing.Any]]:
     """
     FastMCP tool decorator that validates the incoming JWT Bearer token.
 
@@ -21,7 +24,7 @@ def require_auth(func):
     """
 
     @wraps(func)
-    async def wrapper(ctx, *args, **kwargs):
+    async def wrapper(ctx: typing.Any, *args: typing.Any, **kwargs: typing.Any) -> typing.Any:
         try:
             raw = ctx.request_context.request.headers.get("Authorization", "")
         except AttributeError:

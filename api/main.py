@@ -20,7 +20,7 @@ import logging
 import time
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from langchain_core.runnables import RunnableConfig
@@ -80,6 +80,7 @@ async def _finalize_run(
     run_id: str,
     thread_config: RunnableConfig,
     start_time: float,
+    tracer,
     status: str = "completed",
 ) -> None:
     """
@@ -87,7 +88,6 @@ async def _finalize_run(
     Swallows all errors — tracing must never break the API response.
     """
     try:
-        tracer = get_tracer()
         snapshot = graph.get_state(thread_config)
         if not snapshot:
             await tracer.end_run(run_id, status=status)
@@ -134,7 +134,7 @@ def _get_report_from_thread(thread_id: str):
 
 
 @app.post("/research/stream")
-async def stream_research(request: ResearchRequest):
+async def stream_research(request: ResearchRequest, tracer=Depends(get_tracer)):
     """
     Start a new research run and stream SSE events.
 
@@ -147,7 +147,7 @@ async def stream_research(request: ResearchRequest):
 
     # Register the run in the observability DB immediately
     with contextlib.suppress(Exception):
-        await get_tracer().start_run(run_id, request.query, request.profile)
+        await tracer.start_run(run_id, request.query, request.profile)
 
     async def event_generator():
         run_start = time.perf_counter()
@@ -225,13 +225,13 @@ async def stream_research(request: ResearchRequest):
                     }
                 )
             elif writer_completed:
-                await _finalize_run(run_id, thread_config, run_start)
+                await _finalize_run(run_id, thread_config, run_start, tracer)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.post("/research/approve")
-async def approve_plan(request: ApproveRequest):
+async def approve_plan(request: ApproveRequest, tracer=Depends(get_tracer)):
     """
     Resume a run that is paused at the HITL planner interrupt.
 
@@ -255,7 +255,7 @@ async def approve_plan(request: ApproveRequest):
 
     if not request.approved:
         with contextlib.suppress(Exception):
-            await get_tracer().end_run(request.thread_id, status="rejected")
+            await tracer.end_run(request.thread_id, status="rejected")
         return {"status": "rejected", "thread_id": request.thread_id}
 
     # Inject human-edited subquestions into graph state if provided
@@ -306,7 +306,7 @@ async def approve_plan(request: ApproveRequest):
                     yield sse({"type": "complete", "run_id": request.thread_id})
         finally:
             if writer_completed:
-                await _finalize_run(request.thread_id, thread_config, run_start)
+                await _finalize_run(request.thread_id, thread_config, run_start, tracer)
 
     return StreamingResponse(resume_generator(), media_type="text/event-stream")
 
@@ -394,18 +394,17 @@ async def get_report_html(thread_id: str):
 
 
 @app.get("/research/runs")
-async def list_runs(limit: int = 20):
+async def list_runs(limit: int = 20, tracer=Depends(get_tracer)):
     """Return recent run summaries from the observability DB."""
     try:
-        return {"runs": get_tracer().get_recent_runs(limit=limit)}
+        return {"runs": tracer.get_recent_runs(limit=limit)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/research/runs/{run_id}")
-async def get_run_detail(run_id: str):
+async def get_run_detail(run_id: str, tracer=Depends(get_tracer)):
     """Return full observability detail for a single run."""
-    tracer = get_tracer()
     summary = tracer.get_run_summary(run_id)
     if not summary:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")

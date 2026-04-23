@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 import time
+import typing
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
@@ -269,7 +270,7 @@ class ResearchTracer:
 
     # ── Query helpers (synchronous — safe to call from non-async context) ─────
 
-    def get_run_summary(self, run_id: str) -> dict:
+    def get_run_summary(self, run_id: str) -> dict[str, typing.Any]:
         """Return aggregated metrics for a single run."""
         row = self._conn.execute(
             "SELECT run_id, query, profile, status, started_at, completed_at, "
@@ -304,7 +305,7 @@ class ResearchTracer:
             "tool_success_rate": round(success_rate, 3),
         }
 
-    def get_recent_runs(self, limit: int = 20) -> list[dict]:
+    def get_recent_runs(self, limit: int = 20) -> list[dict[str, typing.Any]]:
         """Return the most recent runs ordered by start time."""
         rows = self._conn.execute(
             "SELECT run_id, query, profile, status, started_at, "
@@ -325,7 +326,7 @@ class ResearchTracer:
             for r in rows
         ]
 
-    def get_tool_call_stats(self, run_id: str) -> list[dict]:
+    def get_tool_call_stats(self, run_id: str) -> list[dict[str, typing.Any]]:
         """Return per-tool aggregated stats for a run (useful for dashboards)."""
         rows = self._conn.execute(
             """SELECT
@@ -350,7 +351,7 @@ class ResearchTracer:
             for r in rows
         ]
 
-    def get_node_timings(self, run_id: str) -> list[dict]:
+    def get_node_timings(self, run_id: str) -> list[dict[str, typing.Any]]:
         """Return per-node latency breakdown for a run."""
         rows = self._conn.execute(
             """SELECT node_name, latency_ms, input_tokens, output_tokens,
@@ -375,7 +376,7 @@ class ResearchTracer:
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
-    async def _safe(self, fn, *args) -> None:
+    async def _safe(self, fn: typing.Callable[..., None], *args: typing.Any) -> None:
         """
         Dispatch a blocking SQLite write to the thread pool.
         Swallows all exceptions — observability must never crash the agent.

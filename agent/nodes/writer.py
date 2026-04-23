@@ -1,6 +1,19 @@
 # agent/nodes/writer.py
+from langchain_openai import ChatOpenAI
+
 from agent.nodes.critic import score_source_trust
-from agent.state import Citation, ResearchState
+from agent.state import Citation, ReportOutput, ResearchState
+
+_writer_llm = None
+
+
+def _get_writer_llm():
+    global _writer_llm
+    if _writer_llm is None:
+        from config.settings import settings
+
+        _writer_llm = ChatOpenAI(model=settings.default_model)
+    return _writer_llm
 
 
 def _build_citations(findings) -> list[Citation]:
@@ -64,21 +77,51 @@ async def run(state: ResearchState) -> dict:
     }
 
 
-async def _identify_section(instruction: str, current_report) -> str:
-    """Mock implementation to identify which section of the report to refine based on instruction."""
-    # In a full implementation, an LLM call would parse the instruction and map it to a specific report section.
-    return "example_section"
+async def _identify_section(instruction: str, current_report: ReportOutput) -> str:
+    """Uses LLM to generate a targeted search query based on the refinement instruction."""
+    prompt = f"Given this feedback for a report: '{instruction}', generate a single, concise web search query to gather the missing information. Output ONLY the query."
+    llm = _get_writer_llm()
+    res = await llm.ainvoke(prompt)
+    return str(res.content).strip()
 
 
-async def _targeted_research(section: str, state: ResearchState) -> list:
-    """Mock implementation to fetch additional targeted research."""
-    # In a full implementation, this routes back to sub-agents (e.g. web_agent) with dynamic localized queries.
-    return state.get("findings", [])
+async def _targeted_research(query: str, state: ResearchState) -> list:
+    """Dispatches the query to the web_agent for live targeted research."""
+    from agent.nodes.web_agent import run as run_web_agent
+
+    temp_state = state.copy()
+    temp_state["subquestions"] = [query]
+    result = await run_web_agent(temp_state)
+    return result.get("findings", [])
 
 
-async def _patch_report(current_report, additional_findings: list, instruction: str):
-    """Mock implementation to patch the report with new findings."""
-    # Process new findings and integrate them into the AST of the report.
+async def _patch_report(
+    current_report: ReportOutput, additional_findings: list, instruction: str
+) -> ReportOutput:
+    """Uses structured LLM output to patch the entire report JSON logically based on new findings."""
+    llm = _get_writer_llm().with_structured_output(ReportOutput)
+    findings_str = "\n".join([str(f.model_dump()) for f in additional_findings])
+
+    prompt = f"""
+    You are an expert research editor. Update the report based on the user instruction and new findings.
+    Only modify the sections that need updating.
+
+    Instruction: {instruction}
+
+    New Findings Context:
+    {findings_str}
+
+    Current Report JSON:
+    {current_report.model_dump_json()}
+    """
+
+    patched = await llm.ainvoke(prompt)
+    if isinstance(patched, ReportOutput):
+        # Preserve original complex nested metadata
+        patched.sources = current_report.sources
+        patched.contradictions = current_report.contradictions
+        patched.model_disagreements = current_report.model_disagreements
+        return patched
     return current_report
 
 
@@ -93,11 +136,10 @@ async def refine_report(state: ResearchState, instruction: str) -> dict:
 
     new_version = current_report.version + 1
 
-    # Identify which section to refine
-    section_to_refine = await _identify_section(instruction, current_report)
+    search_query = await _identify_section(instruction, current_report)
 
-    # Re-run only that sub-agent
-    additional_findings = await _targeted_research(section_to_refine, state)
+    # Re-run targeted research
+    additional_findings = await _targeted_research(search_query, state)
 
     # Patch the report
     patched = await _patch_report(current_report, additional_findings, instruction)

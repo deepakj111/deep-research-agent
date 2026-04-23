@@ -1,4 +1,5 @@
 import time
+import typing
 from enum import Enum
 
 
@@ -22,7 +23,7 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
         self.last_failure_time: float | None = None
 
-    async def call(self, coro):
+    async def call(self, coro: typing.Awaitable[typing.Any]) -> typing.Any:
         if self.state == CircuitState.OPEN:
             elapsed = time.time() - (self.last_failure_time or 0)
             if elapsed > self.recovery_timeout:
