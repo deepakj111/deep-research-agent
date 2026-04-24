@@ -202,27 +202,41 @@ class TestStateEndpoint:
 class TestRunsEndpoint:
     def test_list_runs(self, client):
         test_client, _ = client
-        with patch("api.main.get_tracer") as mock_tracer:
-            mock_tracer.return_value.get_recent_runs.return_value = [
-                {
-                    "run_id": "test-run",
-                    "query": "test",
-                    "profile": "fast",
-                    "status": "completed",
-                    "started_at": "2026-01-01T00:00:00",
-                    "total_cost_usd": 0.05,
-                    "final_score": 0.85,
-                }
-            ]
+        from api.main import app, get_tracer
+
+        mock_tracer = MagicMock()
+        mock_tracer.get_recent_runs.return_value = [
+            {
+                "run_id": "test-run",
+                "query": "test",
+                "profile": "fast",
+                "status": "completed",
+                "started_at": "2026-01-01T00:00:00",
+                "total_cost_usd": 0.05,
+                "final_score": 0.85,
+            }
+        ]
+        app.dependency_overrides[get_tracer] = lambda: mock_tracer
+
+        try:
             response = test_client.get("/research/runs")
             assert response.status_code == 200
             data = response.json()
             assert len(data["runs"]) == 1
             assert data["runs"][0]["run_id"] == "test-run"
+        finally:
+            app.dependency_overrides.clear()
 
     def test_run_detail_not_found(self, client):
         test_client, _ = client
-        with patch("api.main.get_tracer") as mock_tracer:
-            mock_tracer.return_value.get_run_summary.return_value = {}
+        from api.main import app, get_tracer
+
+        mock_tracer = MagicMock()
+        mock_tracer.get_run_summary.return_value = {}
+        app.dependency_overrides[get_tracer] = lambda: mock_tracer
+
+        try:
             response = test_client.get("/research/runs/nonexistent")
             assert response.status_code == 404
+        finally:
+            app.dependency_overrides.clear()
