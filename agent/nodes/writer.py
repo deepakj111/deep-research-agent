@@ -1,5 +1,5 @@
 # agent/nodes/writer.py
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 
 from agent.nodes.critic import score_source_trust
 from agent.state import Citation, ReportOutput, ResearchState
@@ -12,7 +12,7 @@ def _get_writer_llm():
     if _writer_llm is None:
         from config.settings import settings
 
-        _writer_llm = ChatOpenAI(model=settings.default_model)
+        _writer_llm = init_chat_model(settings.default_model)
     return _writer_llm
 
 

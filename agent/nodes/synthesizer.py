@@ -3,8 +3,7 @@ import asyncio
 from typing import Any
 
 import yaml
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
 
 from agent.state import ContradictionRecord, ReportOutput, ResearchState
@@ -16,8 +15,8 @@ with open("agent/prompts/synthesizer.yaml") as f:
 SYNTHESIS_PROMPT = _prompts["synthesis_prompt"]
 RECONCILE_PROMPT = _prompts["reconcile_prompt"]
 
-_gpt4o = ChatOpenAI(model=settings.default_model).with_structured_output(ReportOutput)
-_claude = ChatAnthropic(model_name=settings.secondary_model).with_structured_output(ReportOutput)  # type: ignore[call-arg]
+_gpt4o = init_chat_model(settings.default_model).with_structured_output(ReportOutput)
+_claude = init_chat_model(settings.secondary_model).with_structured_output(ReportOutput)  # type: ignore[call-arg]
 
 
 class ReconcileOutput(BaseModel):
@@ -25,7 +24,7 @@ class ReconcileOutput(BaseModel):
     summary: str
 
 
-_reconciler = ChatOpenAI(model=settings.default_model).with_structured_output(ReconcileOutput)
+_reconciler = init_chat_model(settings.default_model).with_structured_output(ReconcileOutput)
 
 
 def build_synthesis_context(findings: list[Any]) -> str:

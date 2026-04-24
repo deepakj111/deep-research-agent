@@ -1,6 +1,6 @@
 # agent/nodes/critic.py
 import yaml
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 
 from agent.state import CritiqueOutput, ResearchState, RunMetadata
 from config.settings import settings
@@ -10,7 +10,7 @@ with open("agent/prompts/critic.yaml") as f:
 
 CRITIC_PROMPT = _prompts["evaluation_prompt"]
 
-_llm = ChatOpenAI(model=settings.default_model).with_structured_output(CritiqueOutput)
+_llm = init_chat_model(settings.default_model).with_structured_output(CritiqueOutput)
 
 MAX_ITERATIONS = 15
 

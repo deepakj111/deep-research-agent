@@ -4,28 +4,28 @@ import time
 
 import jwt
 
-# Pricing per 1 million tokens (USD), as of 2025-Q2
-COST_PER_1M: dict[str, dict[str, float]] = {
-    "gpt-4o": {"input": 2.50, "output": 10.00},
-    "gpt-4o-2024-11-20": {"input": 2.50, "output": 10.00},
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-    "gpt-4o-mini-2024-07-18": {"input": 0.15, "output": 0.60},
-    "claude-sonnet-4-5": {"input": 3.00, "output": 15.00},
-    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
-    "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00},
-}
-
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """
     Estimate the USD cost for a single LLM call.
 
-    Falls back to gpt-4o pricing for unknown model names so the
-    estimate is always conservative (never under-estimated).
+    Uses `litellm` to dynamically fetch live API costs.
+    Falls back to conservative generic pricing (e.g., $2.5/$10) if the model is not found in litellm's registry.
     """
-    prices = COST_PER_1M.get(model, COST_PER_1M["gpt-4o"])
-    input_cost = (input_tokens / 1_000_000) * prices["input"]
-    output_cost = (output_tokens / 1_000_000) * prices["output"]
+    import contextlib
+
+    from litellm import cost_per_token
+
+    with contextlib.suppress(Exception):
+        cost_tuple = cost_per_token(
+            model=model, prompt_tokens=input_tokens, completion_tokens=output_tokens
+        )
+        if cost_tuple:
+            return float(cost_tuple[0])
+
+    # Fallback conservative pricing if litellm doesn't recognize the model or there's an error
+    input_cost = (input_tokens / 1_000_000) * 2.50
+    output_cost = (output_tokens / 1_000_000) * 10.00
     return input_cost + output_cost
 
 

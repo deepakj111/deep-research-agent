@@ -1,4 +1,4 @@
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
 
 from agent.state import ResearchState
@@ -10,7 +10,7 @@ class ClassifierOutput(BaseModel):
     suggested_num_questions: int
 
 
-_llm = ChatOpenAI(model="gpt-4o-mini").with_structured_output(ClassifierOutput)
+_llm = init_chat_model("gpt-4o-mini").with_structured_output(ClassifierOutput)
 
 CLASSIFIER_PROMPT = """Classify this research query:
 

@@ -1,7 +1,7 @@
 import functools
 
 import yaml
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
 
 from agent.state import ResearchState
@@ -25,7 +25,7 @@ _planner_llm = None
 def _get_planner_llm():
     global _planner_llm
     if _planner_llm is None:
-        _planner_llm = ChatOpenAI(model=settings.default_model).with_structured_output(PlanOutput)
+        _planner_llm = init_chat_model(settings.default_model).with_structured_output(PlanOutput)
     return _planner_llm
 
 
