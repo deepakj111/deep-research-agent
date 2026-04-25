@@ -15,6 +15,7 @@ Flow:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
@@ -318,7 +319,7 @@ if submit and query:
 
         # Source relationship graph
         st.markdown("### 🔗 Source Relationship Graph")
-        try:
+        with contextlib.suppress(Exception):
             state_resp = httpx.get(
                 f"{AGENT_API_URL}/research/report/{run_id}",
                 timeout=15.0,
@@ -330,8 +331,6 @@ if submit and query:
                     st.info(
                         f"Visualizing {len(report_data.get('sources', []))} sources from this run."
                     )
-        except Exception:
-            pass
 
         # If we have findings in session state, render the graph
         if findings_raw:

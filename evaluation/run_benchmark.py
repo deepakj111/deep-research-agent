@@ -170,7 +170,9 @@ async def run_single_query(
         "cost_usd": None,
     }
 
-    thread_config: dict[str, Any] = {"configurable": {"thread_id": run_id}}
+    from langchain_core.runnables import RunnableConfig  # noqa: PLC0415
+
+    thread_config: RunnableConfig = {"configurable": {"thread_id": run_id}}
     start = time.perf_counter()
 
     try:
@@ -191,7 +193,7 @@ async def run_single_query(
         }
 
         # Phase 1: run classifier, graph pauses before planner
-        await graph.ainvoke(initial_state, config=thread_config)
+        await graph.ainvoke(initial_state, config=thread_config)  # type: ignore[call-overload]
 
         # Phase 2: auto-approve — resume through planner → supervisor → ... → writer
         final_state = await graph.ainvoke(None, config=thread_config)

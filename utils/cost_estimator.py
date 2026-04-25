@@ -21,11 +21,7 @@ import os
 import time
 from pathlib import Path
 
-import jwt
-
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
@@ -178,20 +174,3 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """
     input_rate, output_rate = _lookup_model(model)
     return input_tokens * input_rate + output_tokens * output_rate
-
-
-def get_jwt_token() -> str:
-    """
-    Generate a short-lived HS256 JWT for authenticating against the MCP servers.
-
-    Token has a 1-hour expiry. MCP_JWT_SECRET must match what is configured
-    in docker-compose.yml on the MCP server side.
-    """
-    secret = os.environ.get("MCP_JWT_SECRET", "")
-    now = int(time.time())
-    payload = {
-        "sub": "agent",
-        "iat": now,
-        "exp": now + 3600,
-    }
-    return jwt.encode(payload, secret, algorithm="HS256")

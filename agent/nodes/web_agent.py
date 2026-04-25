@@ -10,7 +10,7 @@ from agent.retry_policy import ToolDegradedError, retry_with_policy
 from agent.state import ResearchFindings, ResearchState, WebResult
 from config.settings import settings
 from observability.tracer import ToolCallRecord, get_tracer
-from utils.cost_estimator import get_jwt_token
+from utils.auth import get_jwt_token
 
 _profile_cache: dict = {}
 

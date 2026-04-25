@@ -106,7 +106,7 @@ async def _finalize_run(
     Read the final graph state and write the run's closing record to the tracer.
     Swallows all errors — tracing must never break the API response.
     """
-    try:
+    with contextlib.suppress(Exception):
         snapshot = graph.get_state(thread_config)
         if not snapshot:
             await tracer.end_run(run_id, status=status)
@@ -126,8 +126,6 @@ async def _finalize_run(
             iteration_count=meta.iteration_count if meta else 0,
             findings_count=len(findings),
         )
-    except Exception:
-        pass  # intentional — observability is best-effort
 
 
 # ─────────────────────── Report Retrieval Helpers ─────────────────────────────

@@ -10,7 +10,7 @@ from agent.retry_policy import ToolDegradedError, retry_with_policy
 from agent.state import GitHubRepo, ResearchFindings, ResearchState
 from config.settings import settings
 from observability.tracer import ToolCallRecord, get_tracer
-from utils.cost_estimator import get_jwt_token
+from utils.auth import get_jwt_token
 
 
 def load_profile(name: str) -> dict:

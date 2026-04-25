@@ -277,7 +277,7 @@ FastMCP server
 
 All MCP servers use JWT authentication:
 
-1. The agent generates a short-lived HS256 JWT via `utils/cost_estimator.get_jwt_token()`
+1. The agent generates a short-lived HS256 JWT via `utils.auth.get_jwt_token()`.
 2. The token is sent as `Authorization: Bearer <token>` in the SSE connection headers
 3. Each MCP server validates the token via its `@require_auth` decorator before executing the tool
 4. The shared secret is configured via `MCP_JWT_SECRET` environment variable

@@ -180,7 +180,7 @@ retry_with_policy()            ← Layer 1: retries with backoff
 
 MCP server authentication uses HS256 JWTs:
 
-1. Agent generates a token with 1-hour expiry via `utils/cost_estimator.get_jwt_token()`
+1. Agent generates a token with 1-hour expiry via `utils.auth.get_jwt_token()`
 2. MCP servers validate via `@require_auth` decorator in `auth.py`
 3. Invalid/expired tokens return `PermissionError` which the agent catches gracefully
 

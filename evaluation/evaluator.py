@@ -278,7 +278,7 @@ async def evaluate_with_deepeval(
         metrics = [FaithfulnessMetric(threshold=0.7), AnswerRelevancyMetric(threshold=0.7)]
 
         # DeepEval's evaluate() is synchronous — run in thread pool
-        result = await asyncio.to_thread(evaluate, [test_case], metrics)
+        result: Any = await asyncio.to_thread(evaluate, [test_case], metrics)  # type: ignore
 
         return {
             "deepeval_results": [
