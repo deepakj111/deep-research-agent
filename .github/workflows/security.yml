@@ -31,10 +31,5 @@ jobs:
       - name: Run uv-secure lock file scan
         run: uv run uv-secure uv.lock
 
-      - name: Run pip-audit CVE scan
-        run: |
-          uv export --format requirements-txt --no-emit-project > /tmp/req-audit.txt
-          uv run pip-audit -r /tmp/req-audit.txt
-
       - name: Run Bandit static security analysis
         run: uv run bandit -r agent/ mcp_servers/ api/ -ll -ii
