@@ -175,20 +175,6 @@ deep-research-agent/
 
 ---
 
-## Project Status
-
-| Phase | Description | Status |
-|---|---|---|
-| Phase 0 | Foundations & Scaffolding | ✅ Complete |
-| Phase 1 | Core Agent & MCP Servers | ✅ Complete |
-| Phase 2 | Advanced Agent Intelligence | ✅ Complete |
-| Phase 3 | Observability & Evaluation | ✅ Complete |
-| Phase 4 | Production Infrastructure | ✅ Complete |
-| Phase 5 | UI/UX & Streaming | ✅ Complete |
-| Phase 6 | Enterprise Features & Polish | ✅ Complete |
-
----
-
 ## Documentation
 
 | Document | Description |
