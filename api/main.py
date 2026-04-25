@@ -56,6 +56,7 @@ def _handle_rate_limit(request: Request, exc: Exception) -> Response:
 app.add_exception_handler(RateLimitExceeded, _handle_rate_limit)
 
 limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
 
 
 # ─────────────────────────── CORS Middleware ──────────────────────────────────
