@@ -25,27 +25,23 @@ _DEFAULT_OUTPUT_PER_1M = 10.00
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """
-    Estimate USD cost for a single LLM call.
+    Estimate USD cost for a single LLM call using a static pricing table.
 
-    Prioritizes real-time pricing from litellm. If litellm is unavailable
-    or the model is not found, falls back to the static pricing table.
+    Matches on a case-insensitive substring of the model name so that
+    versioned suffixes (e.g. 'gpt-4o-2024-11-20') still resolve correctly.
+    Falls back to GPT-4o pricing for unknown models (conservative estimate).
     """
-    try:
-        import litellm
-
-        # sum() handles the tuple (prompt_cost, completion_cost) returned by litellm
-        costs = litellm.cost_per_token(
-            model=model, prompt_tokens=input_tokens, completion_tokens=output_tokens
-        )
-        return float(sum(costs))
-    except Exception:
-        # Fallback to static pricing table
-        key = model.lower()
-        input_rate, output_rate = next(
-            (rates for model_id, rates in _MODEL_PRICING.items() if model_id in key),
-            (_DEFAULT_INPUT_PER_1M, _DEFAULT_OUTPUT_PER_1M),
-        )
-        return (input_tokens / 1_000_000) * input_rate + (output_tokens / 1_000_000) * output_rate
+    key = model.lower()
+    # Sort by length descending to match 'gpt-4o-mini' before 'gpt-4o'
+    matches = sorted(
+        [(m, r) for m, r in _MODEL_PRICING.items() if m in key],
+        key=lambda x: len(x[0]),
+        reverse=True,
+    )
+    input_rate, output_rate = (
+        matches[0][1] if matches else (_DEFAULT_INPUT_PER_1M, _DEFAULT_OUTPUT_PER_1M)
+    )
+    return (input_tokens / 1_000_000) * input_rate + (output_tokens / 1_000_000) * output_rate
 
 
 def get_jwt_token() -> str:
