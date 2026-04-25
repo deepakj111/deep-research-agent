@@ -3,6 +3,7 @@ import functools
 import yaml
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from agent.state import ResearchState
 from config.settings import settings
@@ -61,6 +62,11 @@ def load_profile(name: str) -> dict:
         return yaml.safe_load(f)
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+async def _invoke_planner_llm(llm, messages):
+    return await llm.ainvoke(messages)
+
+
 async def run(state: ResearchState) -> dict:
     difficulty = state.get("query_difficulty", "narrow")
     n = NUM_QUESTIONS.get(difficulty, 4)
@@ -71,8 +77,9 @@ async def run(state: ResearchState) -> dict:
     strategy_text = STRATEGIES.get(strategy_key, STRATEGIES["breadth-first"]).format(n=n)
 
     llm = _get_planner_llm()
-    result: PlanOutput = await llm.ainvoke(  # type: ignore[assignment]
-        [
+    result: PlanOutput = await _invoke_planner_llm(
+        llm,
+        [  # type: ignore[assignment]
             {"role": "system", "content": PLANNER_SYSTEM},
             {
                 "role": "user",
@@ -84,7 +91,7 @@ async def run(state: ResearchState) -> dict:
                     strategy=strategy_text,
                 ),
             },
-        ]
+        ],
     )
 
     return {

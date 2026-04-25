@@ -20,17 +20,24 @@ import logging
 import time
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from agent.graph import graph
 from agent.state import RunMetadata
 from observability.tracer import get_tracer
 from utils.cost_estimator import estimate_cost
+from utils.logger import setup_logging
 from utils.report_formatter import export_to_pdf, to_html, to_markdown
+
+setup_logging()
+limiter = Limiter(key_func=get_remote_address)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +46,8 @@ app = FastAPI(
     version="1.0.0",
     description="Autonomous multi-source research agent powered by LangGraph and MCP servers.",
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ─────────────────────────── CORS Middleware ──────────────────────────────────
 
@@ -63,7 +72,7 @@ def sse(data: dict) -> str:
 
 
 class ResearchRequest(BaseModel):
-    query: str
+    query: str = Field(..., min_length=1, max_length=1500)
     profile: str = "fast"
 
 
@@ -134,7 +143,8 @@ def _get_report_from_thread(thread_id: str):
 
 
 @app.post("/research/stream")
-async def stream_research(request: ResearchRequest, tracer=Depends(get_tracer)):
+@limiter.limit("5/minute")
+async def stream_research(payload: ResearchRequest, request: Request, tracer=Depends(get_tracer)):
     """
     Start a new research run and stream SSE events.
 
@@ -147,7 +157,7 @@ async def stream_research(request: ResearchRequest, tracer=Depends(get_tracer)):
 
     # Register the run in the observability DB immediately
     with contextlib.suppress(Exception):
-        await tracer.start_run(run_id, request.query, request.profile)
+        await tracer.start_run(run_id, payload.query, payload.profile)
 
     async def event_generator():
         run_start = time.perf_counter()
@@ -156,8 +166,8 @@ async def stream_research(request: ResearchRequest, tracer=Depends(get_tracer)):
         try:
             async for event in graph.astream_events(
                 {
-                    "query": request.query,
-                    "profile": request.profile,
+                    "query": payload.query,
+                    "profile": payload.profile,
                     "run_id": run_id,
                     "query_difficulty": "",
                     "subquestions": [],
@@ -166,7 +176,7 @@ async def stream_research(request: ResearchRequest, tracer=Depends(get_tracer)):
                     "critique": None,
                     "iteration_count": 0,
                     "final_report": None,
-                    "run_metadata": RunMetadata(run_id=run_id, profile=request.profile),
+                    "run_metadata": RunMetadata(run_id=run_id, profile=payload.profile),
                     "error_log": [],
                     "thought_log": [],
                 },

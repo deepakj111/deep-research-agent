@@ -1,5 +1,6 @@
 # agent/nodes/writer.py
 from langchain.chat_models import init_chat_model
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from agent.nodes.critic import score_source_trust
 from agent.state import Citation, ReportOutput, ResearchState
@@ -14,6 +15,11 @@ def _get_writer_llm():
 
         _writer_llm = init_chat_model(settings.default_model)
     return _writer_llm
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+async def _invoke_writer_llm(llm, prompt):
+    return await llm.ainvoke(prompt)
 
 
 def _build_citations(findings) -> list[Citation]:
@@ -81,7 +87,7 @@ async def _identify_section(instruction: str, current_report: ReportOutput) -> s
     """Uses LLM to generate a targeted search query based on the refinement instruction."""
     prompt = f"Given this feedback for a report: '{instruction}', generate a single, concise web search query to gather the missing information. Output ONLY the query."
     llm = _get_writer_llm()
-    res = await llm.ainvoke(prompt)
+    res = await _invoke_writer_llm(llm, prompt)
     return str(res.content).strip()
 
 
@@ -115,7 +121,7 @@ async def _patch_report(
     {current_report.model_dump_json()}
     """
 
-    patched = await llm.ainvoke(prompt)
+    patched = await _invoke_writer_llm(llm, prompt)
     if isinstance(patched, ReportOutput):
         # Preserve original complex nested metadata
         patched.sources = current_report.sources

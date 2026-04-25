@@ -5,6 +5,7 @@ from typing import Any
 import yaml
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from agent.state import ContradictionRecord, ReportOutput, ResearchState
 from config.settings import settings
@@ -49,13 +50,18 @@ def build_synthesis_context(findings: list[Any]) -> str:
     return "\n\n".join(sections)
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+async def _invoke_synth_llm(llm, prompt):
+    return await llm.ainvoke(prompt)
+
+
 async def run(state: ResearchState) -> dict:
     context = build_synthesis_context(state.get("findings", []))
     prompt = SYNTHESIS_PROMPT.format(query=state["query"], context=context)
 
     results = await asyncio.gather(
-        _gpt4o.ainvoke(prompt),
-        _claude.ainvoke(prompt),
+        _invoke_synth_llm(_gpt4o, prompt),
+        _invoke_synth_llm(_claude, prompt),
         return_exceptions=True,
     )
     gpt_report: ReportOutput | Exception = results[0]  # type: ignore[assignment]
@@ -83,12 +89,13 @@ async def run(state: ResearchState) -> dict:
     elif claude_failed:
         final = gpt_report
     else:
-        reconcile: ReconcileOutput = await _reconciler.ainvoke(  # type: ignore[assignment]
+        reconcile: ReconcileOutput = await _invoke_synth_llm(
+            _reconciler,  # type: ignore[assignment]
             RECONCILE_PROMPT.format(
                 query=state["query"],
                 summary_a=gpt_report.executive_summary,  # type: ignore[union-attr]
                 summary_b=claude_report.executive_summary,  # type: ignore[union-attr]
-            )
+            ),
         )
         final = gpt_report
         contradictions = reconcile.contradictions
