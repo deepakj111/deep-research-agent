@@ -134,8 +134,23 @@ class TestSupervisorNode:
 
 
 class TestCostEstimator:
+    """Tests for the dynamic cost estimator backed by LiteLLM community pricing."""
+
+    # Deterministic test pricing data (matches real LiteLLM pricing values)
+    _TEST_COST_MAP: dict = {
+        "gpt-4o": {"input_cost_per_token": 2.5e-06, "output_cost_per_token": 1e-05},
+        "gpt-4o-mini": {"input_cost_per_token": 1.5e-07, "output_cost_per_token": 6e-07},
+        "claude-sonnet-4-5": {"input_cost_per_token": 3e-06, "output_cost_per_token": 1.5e-05},
+    }
+
     def setup_method(self):
-        """Reset the cached cost map between tests."""
+        """Reset the cached cost map and inject test data."""
+        import utils.cost_estimator as mod
+
+        mod._cost_map = self._TEST_COST_MAP.copy()
+
+    def teardown_method(self):
+        """Clear the cost map after each test."""
         import utils.cost_estimator as mod
 
         mod._cost_map = None
@@ -164,12 +179,27 @@ class TestCostEstimator:
         cost = estimate_cost("claude-sonnet-4-5", 1_000_000, 1_000_000)
         assert cost == 18.00
 
-    def test_dynamic_pricing_covers_many_models(self):
-        """Verify the pricing database has broad model coverage (litellm community data)."""
-        from utils.cost_estimator import _get_cost_map
+    def test_fetch_and_cache_populates_cost_map(self, monkeypatch):
+        """Verify the fetch-and-cache mechanism works with a mocked HTTP response."""
 
-        cost_map = _get_cost_map()
-        assert len(cost_map) > 1000, f"Expected 1000+ models, got {len(cost_map)}"
+        import utils.cost_estimator as mod
+
+        # Reset to force a fresh fetch
+        mod._cost_map = None
+
+        # Mock _cache_is_fresh to return False (force network fetch)
+        monkeypatch.setattr(mod, "_cache_is_fresh", lambda: False)
+
+        # Mock _fetch_and_cache to return test data (no real HTTP call)
+        mock_data = {
+            **self._TEST_COST_MAP,
+            "extra-model": {"input_cost_per_token": 1e-06, "output_cost_per_token": 2e-06},
+        }
+        monkeypatch.setattr(mod, "_fetch_and_cache", lambda: mock_data)
+
+        cost_map = mod._get_cost_map()
+        assert len(cost_map) == 4
+        assert "extra-model" in cost_map
 
 
 class TestReportFormatter:

@@ -1,4 +1,4 @@
-.PHONY: run dev test benchmark lint build clean security audit docker-test update-model-prices
+.PHONY: run dev test benchmark lint build clean security audit docker-test
 
 run:
 	docker compose up --build
@@ -38,9 +38,3 @@ clean:
 	docker compose down -v
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -name "*.pyc" -delete
-
-update-model-prices:
-	@echo "Downloading latest LiteLLM community pricing data..."
-	curl -sL "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json" \
-		-o utils/model_prices.json
-	@python3 -c "import json; d=json.load(open('utils/model_prices.json')); print(f'✓ Updated: {len(d)} models')"
