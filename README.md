@@ -100,7 +100,7 @@ make test
 # Linting (ruff + mypy)
 make lint
 
-# Security audit (bandit + pip-audit + uv-secure)
+# Security audit (uv audit + bandit)
 make security
 
 # LLM-as-judge benchmark
@@ -155,16 +155,16 @@ deep-research-agent/
 │   ├── run_benchmark.py          # Benchmark runner with CI gate
 │   └── benchmark_queries.json    # 10-query evaluation dataset
 ├── utils/
-│   ├── cost_estimator.py         # Token→USD cost + JWT helper
+│   ├── cost_estimator.py         # Dynamic LLM pricing (LiteLLM community data) + JWT helper
 │   ├── callbacks.py              # LangChain token usage callback
-│   └── report_formatter.py       # ReportOutput → Markdown
+│   └── report_formatter.py       # ReportOutput → Markdown / HTML / PDF
 ├── tests/
-│   ├── unit/                     # 97 unit tests
+│   ├── unit/                     # 131 unit tests
 │   └── integration/              # Full pipeline integration test
 ├── .github/workflows/
 │   ├── ci.yml                    # Lint + Test + Docker build
 │   ├── eval.yml                  # Weekly LLM-as-judge benchmark
-│   ├── security.yml              # pip-audit + bandit + uv-secure
+│   ├── security.yml              # uv audit + bandit
 │   └── secrets-check.yml         # Gitleaks secret scanning
 ├── docker-compose.yml            # Production 6-service stack
 ├── docker-compose.dev.yml        # Dev overrides (hot-reload)
@@ -185,7 +185,7 @@ deep-research-agent/
 | Phase 3 | Observability & Evaluation | ✅ Complete |
 | Phase 4 | Production Infrastructure | ✅ Complete |
 | Phase 5 | UI/UX & Streaming | ✅ Complete |
-| Phase 6 | Enterprise Features & Polish | ⏳ Pending |
+| Phase 6 | Enterprise Features & Polish | ✅ Complete |
 
 ---
 

@@ -75,6 +75,7 @@ The system follows a **microservices architecture** with clear separation of con
 | API gateway | FastAPI with Server-Sent Events (SSE) |
 | Frontend | Streamlit |
 | Configuration | Pydantic Settings + YAML profiles |
+| Cost estimation | Dynamic pricing via [LiteLLM community database](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) (2,600+ models, auto-cached) |
 | Observability | Custom SQLite tracer + LangSmith |
 | Evaluation | LLM-as-judge with structured output |
 
@@ -323,6 +324,8 @@ The tracer records four types of events:
 | `tool_calls` | MCP tool invocations | `tool_name`, `success`, `latency_ms`, `error_message` |
 | `node_executions` | LLM node calls | `model_name`, `input_tokens`, `output_tokens`, `estimated_cost_usd` |
 | `eval_scores` | LLM-as-judge results | `faithfulness`, `answer_relevancy`, `source_coverage`, `citation_accuracy`, `coherence` |
+
+Cost values in `node_executions` are computed dynamically via `utils/cost_estimator.py`, which reads per-token pricing from the LiteLLM community pricing database (see [Infrastructure → Cost Estimation](INFRASTRUCTURE.md#cost-estimation) for design details).
 
 **Design constraints:**
 

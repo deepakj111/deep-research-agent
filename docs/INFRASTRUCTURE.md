@@ -203,8 +203,7 @@ All MCP tool outputs are scrubbed for personally identifiable information before
 | Tool | Scope | CI Workflow |
 |---|---|---|
 | **Bandit** | Python security linter (agent, MCP servers, API) | `security.yml` |
-| **pip-audit** | CVE scanning against PyPI advisory database | `security.yml` |
-| **uv-secure** | Lock file vulnerability scanning | `security.yml` |
+| **uv audit** | Dependency vulnerability scanning against advisory databases | `security.yml` |
 | **Gitleaks** | Secret detection in git history | `secrets-check.yml` |
 
 ---
@@ -241,16 +240,42 @@ workflow.add_conditional_edges(
 
 ### Cost Estimation
 
-Token costs are estimated in real-time using `utils/cost_estimator.py`:
+Token costs are estimated dynamically using `utils/cost_estimator.py`, which reads pricing data from the **LiteLLM community-maintained pricing database** (2,600+ models).
 
-| Model | Input (per 1M tokens) | Output (per 1M tokens) |
-|---|---|---|
-| GPT-4o | $2.50 | $10.00 |
-| GPT-4o-mini | $0.15 | $0.60 |
-| Claude Sonnet 3.5 | $3.00 | $15.00 |
-| Claude Haiku 3.5 | $0.80 | $4.00 |
+#### Design Choice: LiteLLM Pricing Without the LiteLLM Package
 
-Unknown models fall back to GPT-4o pricing (conservative estimate).
+The industry-standard approach for LLM cost estimation is [LiteLLM](https://github.com/BerriAI/litellm), which maintains a [community-curated pricing JSON](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) covering 2,600+ models across all major providers. However, adding `litellm` as a runtime dependency is impractical for this project because:
+
+1. **Aggressive version pinning**: litellm pins exact versions of core dependencies (`pydantic==2.12.5`, `python-dotenv==1.0.1`, `openai==2.24.0`) that conflict with our stack
+2. **Supply chain risk**: litellm v1.82.7/1.82.8 were compromised in a [March 2026 supply chain attack](https://snyk.io/blog/litellm-supply-chain-attack/)
+3. **Slow import**: `import litellm` makes a network call to fetch pricing data, causing hangs in CI/CD environments
+4. **Heavy transitive dependencies**: Adds 20+ transitive packages to the dependency tree
+
+**Our solution**: Fetch litellm's community pricing JSON directly from GitHub at runtime, cache it locally, and never `import litellm`. This gives us:
+
+- ✅ Dynamic pricing for 2,600+ models (not a hardcoded dictionary)
+- ✅ Automatic refresh every 7 days with local disk caching
+- ✅ Zero additional runtime dependencies
+- ✅ Graceful offline fallback to conservative GPT-4o pricing
+- ✅ No security vulnerabilities from litellm's dependency tree
+
+#### How It Works
+
+```
+First call to estimate_cost()
+  │
+  ├─ In-process cache hit? → return immediately
+  │
+  ├─ Local disk cache fresh (< 7 days)? → load from ~/.cache/deep-research-agent/
+  │
+  ├─ Fetch from GitHub (10s timeout) → cache to disk
+  │
+  ├─ Stale disk cache exists? → use it (better than nothing)
+  │
+  └─ No data at all → conservative GPT-4o fallback ($2.50/$10.00 per 1M tokens)
+```
+
+Unknown models always fall back to GPT-4o pricing (conservative estimate — never underestimates cost).
 
 ### Token Usage Callback
 
@@ -287,8 +312,7 @@ Runs the full benchmark pipeline with the Docker Compose stack. See [Evaluation 
 
 | Step | Tool |
 |---|---|
-| Lock file scan | `uv-secure` |
-| CVE scan | `pip-audit` |
+| Dependency vulnerability scan | `uv audit` |
 | Static analysis | `bandit -ll -ii` |
 
 ### 4. Security — Secret Scanning (`secrets-check.yml`)
@@ -338,7 +362,7 @@ uv run uvicorn api.main:app --host 0.0.0.0 --port 8080 --reload
 | `make test` | `uv run pytest tests/ -v --cov=...` | Tests with coverage |
 | `make benchmark` | `uv run python evaluation/run_benchmark.py ...` | LLM-as-judge eval |
 | `make lint` | `ruff check . && ruff format --check . && mypy ...` | All linters |
-| `make security` | `uv-secure && pip-audit && bandit` | Security scans |
+| `make security` | `uv audit && bandit` | Security scans |
 | `make build` | `docker compose build` | Build images only |
 | `make docker-test` | Build + health check all services + teardown | Docker smoke test |
 | `make clean` | `docker compose down -v` + cleanup | Remove containers + caches |
