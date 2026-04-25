@@ -19,6 +19,7 @@ import json
 import logging
 import time
 import uuid
+from typing import cast
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,7 +38,6 @@ from utils.logger import setup_logging
 from utils.report_formatter import export_to_pdf, to_html, to_markdown
 
 setup_logging()
-limiter = Limiter(key_func=get_remote_address)
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +46,17 @@ app = FastAPI(
     version="1.0.0",
     description="Autonomous multi-source research agent powered by LangGraph and MCP servers.",
 )
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# correctly typed wrapper, no type: ignore needed:
+def _handle_rate_limit(request: Request, exc: Exception) -> Response:
+    return _rate_limit_exceeded_handler(request, cast(RateLimitExceeded, exc))
+
+
+app.add_exception_handler(RateLimitExceeded, _handle_rate_limit)
+
+limiter = Limiter(key_func=get_remote_address)
+
 
 # ─────────────────────────── CORS Middleware ──────────────────────────────────
 
