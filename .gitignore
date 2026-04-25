@@ -25,3 +25,8 @@ evaluation/results/*.json
 
 # PDF outputs
 *.pdf
+
+# Testing coverage
+.coverage
+coverage.xml
+htmlcov/
