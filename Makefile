@@ -1,4 +1,4 @@
-.PHONY: run dev test benchmark lint build clean security audit docker-test
+.PHONY: run dev test benchmark lint build clean security audit docker-test update-model-prices
 
 run:
 	docker compose up --build
@@ -18,8 +18,7 @@ lint:
 	uv run mypy agent/ mcp_servers/ api/ config/ utils/ --ignore-missing-imports
 
 security:
-	uv run uv-secure uv.lock
-	uv export --format requirements-txt --no-emit-project > /tmp/req-audit.txt && uv run pip-audit -r /tmp/req-audit.txt
+	uv audit
 	uv run bandit -r agent/ mcp_servers/ api/ -ll -ii
 
 build:
@@ -39,3 +38,9 @@ clean:
 	docker compose down -v
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -name "*.pyc" -delete
+
+update-model-prices:
+	@echo "Downloading latest LiteLLM community pricing data..."
+	curl -sL "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json" \
+		-o utils/model_prices.json
+	@python3 -c "import json; d=json.load(open('utils/model_prices.json')); print(f'✓ Updated: {len(d)} models')"

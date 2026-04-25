@@ -12,6 +12,7 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ['--maxkb=500']
+        exclude: utils/model_prices\.json
       - id: debug-statements
       - id: detect-private-key
 

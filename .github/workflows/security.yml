@@ -28,8 +28,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run uv-secure lock file scan
-        run: uv run uv-secure uv.lock
+      - name: Run uv audit dependency scan
+        run: uv audit
 
       - name: Run Bandit static security analysis
         run: uv run bandit -r agent/ mcp_servers/ api/ -ll -ii

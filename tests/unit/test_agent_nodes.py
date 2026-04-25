@@ -134,6 +134,12 @@ class TestSupervisorNode:
 
 
 class TestCostEstimator:
+    def setup_method(self):
+        """Reset the cached cost map between tests."""
+        import utils.cost_estimator as mod
+
+        mod._cost_map = None
+
     def test_gpt4o_cost_calculation(self):
         from utils.cost_estimator import estimate_cost
 
@@ -157,6 +163,13 @@ class TestCostEstimator:
 
         cost = estimate_cost("claude-sonnet-4-5", 1_000_000, 1_000_000)
         assert cost == 18.00
+
+    def test_dynamic_pricing_covers_many_models(self):
+        """Verify the pricing database has broad model coverage (litellm community data)."""
+        from utils.cost_estimator import _get_cost_map
+
+        cost_map = _get_cost_map()
+        assert len(cost_map) > 1000, f"Expected 1000+ models, got {len(cost_map)}"
 
 
 class TestReportFormatter:
