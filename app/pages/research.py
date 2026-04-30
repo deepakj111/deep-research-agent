@@ -15,6 +15,7 @@ Flow:
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import json
 import os
@@ -272,6 +273,7 @@ if submit and query:
     if hitl_occurred and st.session_state.get("hitl_pending"):
         _render_hitl_panel()
 
+    pdf_content = None
     if run_id:
         st.markdown("---")
 
@@ -292,6 +294,7 @@ if submit and query:
                     timeout=30.0,
                 )
                 if pdf_resp.status_code == 200:
+                    pdf_content = pdf_resp.content
                     st.download_button(
                         "📥 Download PDF",
                         data=pdf_resp.content,
@@ -318,6 +321,18 @@ if submit and query:
                 disabled=True,
                 help="Navigate to the Traces page to inspect this run.",
             )
+
+        # Inline PDF Viewer
+        if pdf_content:
+            st.markdown("### 👁️ PDF Preview")
+            with st.expander("Show PDF Document", expanded=False):
+                pdf_base64 = base64.b64encode(pdf_content).decode("utf-8")
+                pdf_iframe = (
+                    f'<iframe src="data:application/pdf;base64,{pdf_base64}" '
+                    f'width="100%" height="850px" type="application/pdf" '
+                    f'style="border: 1px solid var(--border-glass); border-radius: 8px;"></iframe>'
+                )
+                st.markdown(pdf_iframe, unsafe_allow_html=True)
 
         # Source relationship graph
         st.markdown("### 🔗 Source Relationship Graph")
