@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # API Server
     agent_api_url: str = "http://localhost:8080"
     agent_api_port: int = 8080
+    frontend_password: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from app.components.auth import require_auth
 from app.components.theme import hero_header, inject_theme
 
 # ────────────────────────── Page Config ───────────────────────────────────────
@@ -25,6 +26,7 @@ st.set_page_config(
 )
 
 inject_theme()
+require_auth()
 
 # ────────────────────────── Sidebar ───────────────────────────────────────────
 

@@ -20,6 +20,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from app.components.auth import require_auth
 from app.components.theme import (
     COLORS,
     hero_header,
@@ -33,6 +34,7 @@ AGENT_API_URL = os.environ.get("AGENT_API_URL", "http://localhost:8080")
 
 st.set_page_config(page_title="Traces | DeepResearch", page_icon="📊", layout="wide")
 inject_theme()
+require_auth()
 
 hero_header("📊 Observability Dashboard", "Inspect past runs, node timings, and cost breakdowns")
 

@@ -23,6 +23,7 @@ import time
 import httpx
 import streamlit as st
 
+from app.components.auth import require_auth
 from app.components.source_graph import render_source_graph
 from app.components.theme import hero_header, inject_theme, metric_card
 
@@ -32,6 +33,7 @@ AGENT_API_URL = os.environ.get("AGENT_API_URL", "http://localhost:8080")
 
 st.set_page_config(page_title="Research | DeepResearch", page_icon="🔬", layout="wide")
 inject_theme()
+require_auth()
 
 hero_header("🔬 Research", "Start a new research query and watch the agent reason in real time")
 
