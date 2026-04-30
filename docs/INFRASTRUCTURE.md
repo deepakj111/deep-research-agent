@@ -219,7 +219,7 @@ workflow.add_conditional_edges(
     "critic",
     check_budget,         # ← Budget guard function
     {
-        "continue": "supervisor",
+        "continue": "planner",
         "synthesize": "synthesizer",
     },
 )

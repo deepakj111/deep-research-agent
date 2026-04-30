@@ -116,7 +116,7 @@ The agent is defined as a **LangGraph `StateGraph`** in `agent/graph.py`. The gr
                           │                     │
                           ▼                     ▼
                    ┌────────────┐       ┌──────────────┐
-                   │ Supervisor │       │ Synthesizer  │
+                   │  Planner   │       │ Synthesizer  │
                    │ (loop back)│       │ (GPT + Claude│
                    └────────────┘       │  parallel)   │
                                         └──────┬───────┘
@@ -131,7 +131,7 @@ The agent is defined as a **LangGraph `StateGraph`** in `agent/graph.py`. The gr
 The graph uses **conditional edges** after the critic node, mediated by the `check_budget()` function from `agent/budget_guard.py`:
 
 1. **Budget check first**: If the iteration count has reached `settings.max_iterations` (default: 15) or the estimated cost has exceeded `settings.max_cost_per_run_usd` (default: $2.00), the graph routes directly to synthesis.
-2. **Critic decision**: If budget is OK, the critic's `should_continue` flag determines whether to loop (route back to supervisor for another research round) or proceed to synthesis.
+2. **Critic decision**: If budget is OK, the critic's `should_continue` flag determines whether to loop (route back to planner for another targeted research round) or proceed to synthesis.
 
 ---
 
@@ -148,10 +148,11 @@ The graph uses **conditional edges** after the critic node, mediated by the `che
 
 - **Model**: GPT-4o
 - **Purpose**: Generates research sub-questions based on the classified difficulty and user profile
-- **HITL**: The graph is interrupted *before* this node. The API emits an SSE `hitl_interrupt` event. The user can:
+- **HITL**: The graph is interrupted *before* this node. The API emits an SSE `hitl_interrupt` event on the first iteration. The user can:
   - **Approve**: The planner runs normally
   - **Edit**: The user provides `edited_subquestions` via `POST /research/approve`, which are injected directly into state (bypassing the planner LLM entirely)
   - **Reject**: The run is marked as `rejected` in the tracer
+- **Iterative Drill-down**: On subsequent loops (`iteration_count > 0`), the planner dynamically generates follow-up sub-questions based on the critic's `missing_areas` feedback to independently drill deeper into the content without repeated HITL prompting.
 - **Prompts**: Loaded from `agent/prompts/planner.yaml`
 
 ### Supervisor (`agent/nodes/supervisor.py`)
@@ -187,7 +188,7 @@ retry_with_policy() → circuit_breaker.call() → MCP tool.ainvoke()
 
 - **Model**: GPT-4o with structured output (`CritiqueOutput`)
 - **Scores**: `coverage_score`, `recency_score`, `depth_score`, `source_diversity_score` (each 0.0–1.0)
-- **Decision**: Sets `should_continue: bool` — if `True` and budget permits, the graph loops back to supervisor
+- **Decision**: Sets `should_continue: bool` — if `True` and budget permits, the graph loops back to planner
 - **Source trust scoring**: `score_source_trust()` evaluates each source based on type-specific heuristics (citation count for arXiv, star count for GitHub, domain trustworthiness for web)
 
 ### Synthesizer (`agent/nodes/synthesizer.py`)
