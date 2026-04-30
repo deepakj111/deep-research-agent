@@ -6,12 +6,11 @@ import httpx
 from fastmcp import FastMCP
 from starlette.responses import JSONResponse
 
-# Ensure the local directory is on sys.path so `cache` and `auth` resolve
-# correctly both when running directly and inside Docker.
-sys.path.insert(0, os.path.dirname(__file__))
+# Ensure the shared directory is on sys.path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from auth import require_auth  # noqa: E402
-from cache import CacheLayer  # noqa: E402
+from shared.auth import require_auth  # noqa: E402
+from shared.cache import CacheLayer  # noqa: E402
 
 mcp = FastMCP("web-search-server")
 cache = CacheLayer(ttl_seconds=3600)

@@ -39,12 +39,12 @@ class CircuitBreaker:
             self.failure_count = 0
             self.state = CircuitState.CLOSED
             return result
-        except Exception as e:
+        except Exception:
             self.failure_count += 1
             self.last_failure_time = time.time()
             if self.failure_count >= self.failure_threshold:
                 self.state = CircuitState.OPEN
-            raise e
+            raise
 
 
 # Module-level singletons — one per tool

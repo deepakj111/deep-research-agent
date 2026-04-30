@@ -1,11 +1,10 @@
-import functools
-
 import yaml
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from agent.state import ResearchState
+from config.profiles import load_profile
 from config.settings import settings
 
 with open("agent/prompts/planner.yaml") as f:
@@ -54,12 +53,6 @@ STRATEGIES = {
         "The final report must weigh both sides."
     ),
 }
-
-
-@functools.lru_cache(maxsize=16)
-def load_profile(name: str) -> dict:
-    with open(f"config/profiles/{name}.yaml") as f:
-        return yaml.safe_load(f)
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))

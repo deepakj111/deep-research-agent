@@ -4,13 +4,13 @@ import pytest
 
 class TestCacheLayer:
     def test_cache_miss_returns_none(self, tmp_path):
-        from mcp_servers.web_search.cache import CacheLayer
+        from mcp_servers.shared.cache import CacheLayer
 
         cache = CacheLayer(db_path=str(tmp_path / "test.db"), ttl_seconds=60)
         assert cache.get("nonexistent_key") is None
 
     def test_cache_set_and_get(self, tmp_path):
-        from mcp_servers.web_search.cache import CacheLayer
+        from mcp_servers.shared.cache import CacheLayer
 
         cache = CacheLayer(db_path=str(tmp_path / "test.db"), ttl_seconds=60)
         cache.set("key1", [{"url": "https://example.com", "title": "Test"}])
@@ -19,14 +19,14 @@ class TestCacheLayer:
         assert result[0]["url"] == "https://example.com"
 
     def test_cache_expired_returns_none(self, tmp_path):
-        from mcp_servers.web_search.cache import CacheLayer
+        from mcp_servers.shared.cache import CacheLayer
 
         cache = CacheLayer(db_path=str(tmp_path / "test.db"), ttl_seconds=-1)
         cache.set("expired_key", [{"data": "old"}])
         assert cache.get("expired_key") is None
 
     def test_cache_overwrite_with_same_key(self, tmp_path):
-        from mcp_servers.web_search.cache import CacheLayer
+        from mcp_servers.shared.cache import CacheLayer
 
         cache = CacheLayer(db_path=str(tmp_path / "test.db"), ttl_seconds=60)
         cache.set("key1", [{"v": 1}])
@@ -36,7 +36,7 @@ class TestCacheLayer:
         assert result[0]["v"] == 2
 
     def test_purge_expired_removes_old_rows(self, tmp_path):
-        from mcp_servers.web_search.cache import CacheLayer
+        from mcp_servers.shared.cache import CacheLayer
 
         # Write a stale entry with ttl=-1 (immediately expired)
         stale_cache = CacheLayer(db_path=str(tmp_path / "test.db"), ttl_seconds=-1)

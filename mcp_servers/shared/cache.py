@@ -1,4 +1,12 @@
-# mcp_servers/web_search/cache.py
+# mcp_servers/shared/cache.py
+"""
+SQLite-backed result cache shared by all MCP servers.
+
+Keys are arbitrary strings (e.g. "web:{query}:{max_results}").
+Values are JSON-serialisable lists (the raw normalised results list).
+Expired rows are read-through filtered and lazily purged.
+"""
+
 import json
 import sqlite3
 import time
@@ -6,13 +14,7 @@ import typing
 
 
 class CacheLayer:
-    """
-    SQLite-backed result cache for web search queries.
-
-    Keys are arbitrary strings (e.g. "web:{query}:{max_results}").
-    Values are JSON-serialisable lists (the raw normalised results list).
-    Expired rows are read-through filtered and lazily purged.
-    """
+    """SQLite-backed TTL cache for MCP tool responses."""
 
     def __init__(self, db_path: str = ".cache.db", ttl_seconds: int = 3600) -> None:
         self.ttl = ttl_seconds

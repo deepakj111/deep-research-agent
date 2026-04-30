@@ -1,6 +1,6 @@
 # agent/state.py
 import operator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, TypedDict
 
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ class WebResult(BaseModel):
     title: str
     snippet: str
     relevance_score: float = Field(ge=0, le=1, default=0.5)
-    fetched_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    fetched_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class ArxivPaper(BaseModel):

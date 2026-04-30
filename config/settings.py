@@ -23,9 +23,6 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = True
     langchain_project: str = "deep-research-agent"
 
-    # Redis
-    redis_url: str = "redis://localhost:6379"
-
     # Agent limits
     max_iterations: int = 15
     max_cost_per_run_usd: float = 2.0

@@ -1,44 +1,24 @@
 # mcp_servers/github/server.py
-import json
 import os
-import sqlite3
 import sys
-import time
 
 import httpx
 from fastmcp import FastMCP
 from starlette.responses import JSONResponse
 
-sys.path.insert(0, os.path.dirname(__file__))
+# Ensure the shared directory is on sys.path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from shared.auth import require_auth  # noqa: E402
+from shared.cache import CacheLayer  # noqa: E402
 
 mcp = FastMCP("github-server")
-
-_conn = sqlite3.connect(".github_cache.db", check_same_thread=False)
-_conn.execute(
-    "CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT, expires_at REAL)"
-)
-_conn.commit()
-
-TTL = 7200  # 2 hours
-
-
-def _cache_get(key: str) -> list | None:
-    row = _conn.execute("SELECT value, expires_at FROM cache WHERE key = ?", (key,)).fetchone()
-    if row and time.time() < row[1]:
-        return json.loads(row[0])
-    return None
-
-
-def _cache_set(key: str, value: list) -> None:
-    _conn.execute(
-        "INSERT OR REPLACE INTO cache VALUES (?, ?, ?)",
-        (key, json.dumps(value), time.time() + TTL),
-    )
-    _conn.commit()
+cache = CacheLayer(db_path=".github_cache.db", ttl_seconds=7200)
 
 
 @mcp.tool()
-async def search_repos(topic: str, max_repos: int = 5) -> list[dict]:
+@require_auth
+async def search_repos(ctx, topic: str, max_repos: int = 5) -> list[dict]:
     """
     Search GitHub repositories by topic/keyword.
 
@@ -47,7 +27,7 @@ async def search_repos(topic: str, max_repos: int = 5) -> list[dict]:
     last_updated, trust_score.
     """
     cache_key = f"github:{topic}:{max_repos}"
-    cached = _cache_get(cache_key)
+    cached = cache.get(cache_key)
     if cached:
         return cached
 
@@ -87,7 +67,7 @@ async def search_repos(topic: str, max_repos: int = 5) -> list[dict]:
         for r in items
     ]
 
-    _cache_set(cache_key, repos)
+    cache.set(cache_key, repos)
     return repos
 
 

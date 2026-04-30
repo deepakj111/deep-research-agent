@@ -7,7 +7,7 @@ dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 test:
-	uv run pytest tests/ -v --cov=agent --cov=mcp_servers --cov-report=term || [ "$$?" = "5" ]
+	uv run pytest tests/ -v --cov=agent --cov=mcp_servers --cov=utils --cov=observability --cov=evaluation --cov-report=term || [ "$$?" = "5" ]
 
 benchmark:
 	uv run python evaluation/run_benchmark.py --profile fast --queries 3 --fail-below 0.75

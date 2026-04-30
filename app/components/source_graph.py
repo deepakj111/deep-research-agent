@@ -148,7 +148,7 @@ def render_source_graph(
 
     # Write to a temp file and embed in Streamlit
     # Use content hash for caching — avoids re-rendering unchanged graphs
-    graph_hash = hashlib.md5(str(sorted(G.nodes)).encode()).hexdigest()[:8]
+    graph_hash = hashlib.sha256(str(sorted(G.nodes)).encode()).hexdigest()[:8]
     tmp_path = Path(tempfile.gettempdir()) / f"source_graph_{graph_hash}.html"
     net.save_graph(str(tmp_path))
 

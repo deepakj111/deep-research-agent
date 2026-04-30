@@ -1,13 +1,10 @@
 """
 observability/dashboard.py
 
-Observability dashboard for the DeepResearch Agent.
+Observability dashboard API helpers for the DeepResearch Agent.
 
-This module provides the data-access layer and Streamlit rendering helpers
-that will be assembled into the full Phase 5 UI.  The functions here are
-fully implemented and tested; only the top-level `render_dashboard()` page
-entry point is stubbed until Phase 5 wires it into the multi-page Streamlit
-app.
+This module provides the data-access layer used by the Streamlit rendering helpers
+in `app/pages/traces.py`.
 """
 
 from __future__ import annotations
@@ -63,15 +60,8 @@ def get_tool_success_rates() -> dict[str, float]:
 
 def render_dashboard() -> None:
     """
-    Full Streamlit observability dashboard.
-
-    Stubbed for Phase 5 — the data helpers above are already functional.
-    Phase 5 will add:
-      - Run history table with status badges
-      - Cost/latency breakdown charts (Plotly)
-      - Per-run tool call waterfall view
-      - Benchmark score trend line
-      - Live tail of the thought_log for active runs
+    Streamlit observability dashboard entrypoint (used for standalone mode).
+    For the full multi-page app, see `app/streamlit_app.py`.
     """
     try:
         import streamlit as st  # noqa: PLC0415
@@ -81,8 +71,7 @@ def render_dashboard() -> None:
 
     st.subheader("📊 Observability Dashboard")
     st.info(
-        "Full dashboard UI is implemented in **Phase 5**. "
-        "The data layer is ready — run `get_run_overview()` to query it directly.",
+        "For the full interactive UI, run `uv run streamlit run app/streamlit_app.py`.",
         icon="🔧",
     )
 

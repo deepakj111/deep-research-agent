@@ -8,29 +8,16 @@ from agent.circuit_breaker import circuit_breakers
 from agent.middleware.pii_filter import filter_pii_simple
 from agent.retry_policy import ToolDegradedError, retry_with_policy
 from agent.state import ResearchFindings, ResearchState, WebResult
+from config.profiles import load_profile
 from config.settings import settings
 from observability.tracer import ToolCallRecord, get_tracer
 from utils.auth import get_jwt_token
 
-_profile_cache: dict = {}
-
-
-def load_profile(name: str) -> dict:
-    import yaml
-
-    if name not in _profile_cache:
-        with open(f"config/profiles/{name}.yaml") as f:
-            _profile_cache[name] = yaml.safe_load(f)
-    return _profile_cache[name]
-
 
 async def run(state: ResearchState) -> dict:
-    # When called via Send, subquestions contains exactly 1 item.
-    # Sequential fallback uses coverage index.
+    # Supervisor's Send() always passes exactly one subquestion per agent invocation.
     subquestions = state.get("subquestions", [])
-    subquestion = (
-        subquestions[0] if len(subquestions) == 1 else subquestions[len(state.get("findings", []))]
-    )
+    subquestion = subquestions[0] if subquestions else ""
 
     profile = load_profile(state.get("profile", "fast"))
     max_results = profile.get("max_web_results", 3)

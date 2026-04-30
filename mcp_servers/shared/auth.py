@@ -1,4 +1,12 @@
-# mcp_servers/web_search/auth.py
+# mcp_servers/shared/auth.py
+"""
+JWT authentication decorator shared by all MCP servers.
+
+Validates the incoming HS256 Bearer token against the MCP_JWT_SECRET
+environment variable. Raises PermissionError on invalid/missing tokens,
+which FastMCP surfaces as an MCP error response.
+"""
+
 import os
 import typing
 from functools import wraps

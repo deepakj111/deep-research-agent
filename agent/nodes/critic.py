@@ -12,8 +12,6 @@ CRITIC_PROMPT = _prompts["evaluation_prompt"]
 
 _llm = init_chat_model(settings.default_model).with_structured_output(CritiqueOutput)
 
-MAX_ITERATIONS = 15
-
 
 def score_source_trust(source: dict, source_type: str) -> float:
     score = 0.0
@@ -42,7 +40,7 @@ def score_source_trust(source: dict, source_type: str) -> float:
 def should_continue(state: ResearchState) -> str:
     critique = state.get("critique")
     meta = state.get("run_metadata")
-    if meta and meta.iteration_count >= MAX_ITERATIONS:
+    if meta and meta.iteration_count >= settings.max_iterations:
         return "synthesize"
     if critique and critique.should_continue:
         return "continue"
@@ -63,7 +61,7 @@ async def run(state: ResearchState) -> dict:
             repo_count=sum(len(f.repos) for f in all_findings),
             errors=[e for f in all_findings for e in f.tool_errors],
             iteration=iteration_count,
-            max_iterations=MAX_ITERATIONS,
+            max_iterations=settings.max_iterations,
         )
     )
 

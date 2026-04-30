@@ -1,42 +1,22 @@
 # mcp_servers/arxiv/server.py
-import json
 import os
-import sqlite3
 import sys
-import time
 import xml.etree.ElementTree as ET
 
 import httpx
 from fastmcp import FastMCP
 from starlette.responses import JSONResponse
 
-sys.path.insert(0, os.path.dirname(__file__))
+# Ensure the shared directory is on sys.path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from shared.auth import require_auth  # noqa: E402
+from shared.cache import CacheLayer  # noqa: E402
 
 mcp = FastMCP("arxiv-server")
-
-_conn = sqlite3.connect(".arxiv_cache.db", check_same_thread=False)
-_conn.execute(
-    "CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT, expires_at REAL)"
-)
-_conn.commit()
+cache = CacheLayer(db_path=".arxiv_cache.db", ttl_seconds=86400)
 
 ARXIV_NS = "{http://www.w3.org/2005/Atom}"
-TTL = 86400  # 24 hours
-
-
-def _cache_get(key: str) -> list | None:
-    row = _conn.execute("SELECT value, expires_at FROM cache WHERE key = ?", (key,)).fetchone()
-    if row and time.time() < row[1]:
-        return json.loads(row[0])
-    return None
-
-
-def _cache_set(key: str, value: list) -> None:
-    _conn.execute(
-        "INSERT OR REPLACE INTO cache VALUES (?, ?, ?)",
-        (key, json.dumps(value), time.time() + TTL),
-    )
-    _conn.commit()
 
 
 def _parse_atom(xml_text: str) -> list[dict]:
@@ -64,7 +44,8 @@ def _parse_atom(xml_text: str) -> list[dict]:
 
 
 @mcp.tool()
-async def fetch_papers(query: str, max_papers: int = 5) -> list[dict]:
+@require_auth
+async def fetch_papers(ctx, query: str, max_papers: int = 5) -> list[dict]:
     """
     Search arXiv for academic papers matching the query.
 
@@ -73,7 +54,7 @@ async def fetch_papers(query: str, max_papers: int = 5) -> list[dict]:
     url, citation_count, trust_score.
     """
     cache_key = f"arxiv:{query}:{max_papers}"
-    cached = _cache_get(cache_key)
+    cached = cache.get(cache_key)
     if cached:
         return cached
 
@@ -91,7 +72,7 @@ async def fetch_papers(query: str, max_papers: int = 5) -> list[dict]:
         response.raise_for_status()
         papers = _parse_atom(response.text)
 
-    _cache_set(cache_key, papers)
+    cache.set(cache_key, papers)
     return papers
 
 
