@@ -69,29 +69,44 @@ async def run(state: ResearchState) -> dict:
     strategy_key = profile_cfg.get("query_decomposition", "breadth-first")
     strategy_text = STRATEGIES.get(strategy_key, STRATEGIES["breadth-first"]).format(n=n)
 
+    meta = state.get("run_metadata")
+    iteration = meta.iteration_count if meta else 0
+    critique = state.get("critique")
+
+    if iteration > 0 and critique and critique.missing_areas:
+        user_prompt = _prompts.get("replan_user", "").format(
+            query=state["query"],
+            iteration=iteration,
+            max_iterations=settings.max_iterations,
+            missing_areas="\n".join([f"- {m}" for m in critique.missing_areas]),
+            n=n,
+        )
+        task_label = (
+            f"Generated {n} follow-up questions for iteration {iteration} targeting missing areas."
+        )
+    else:
+        user_prompt = PLANNER_USER.format(
+            query=state["query"],
+            n=n,
+            profile=profile_name,
+            difficulty=difficulty,
+            strategy=strategy_text,
+        )
+        task_label = (
+            f"Generated {n} sub-questions for '{difficulty}' query using {strategy_key} strategy."
+        )
+
     llm = _get_planner_llm()
     result: PlanOutput = await _invoke_planner_llm(
         llm,
         [  # type: ignore[assignment]
             {"role": "system", "content": PLANNER_SYSTEM},
-            {
-                "role": "user",
-                "content": PLANNER_USER.format(
-                    query=state["query"],
-                    n=n,
-                    profile=profile_name,
-                    difficulty=difficulty,
-                    strategy=strategy_text,
-                ),
-            },
+            {"role": "user", "content": user_prompt},
         ],
     )
 
     return {
         "subquestions": result.subquestions,
         "approved_plan": True,
-        "thought_log": [
-            f"[Planner] Generated {len(result.subquestions)} sub-questions for '{difficulty}' query using {strategy_key} strategy. "
-            f"Reasoning: {result.reasoning}"
-        ],
+        "thought_log": [f"[Planner] {task_label} Reasoning: {result.reasoning}"],
     }

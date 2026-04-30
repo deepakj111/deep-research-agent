@@ -48,7 +48,7 @@ workflow.add_conditional_edges(
     "critic",
     check_budget,
     {
-        "continue": "supervisor",
+        "continue": "planner",
         "synthesize": "synthesizer",
     },
 )

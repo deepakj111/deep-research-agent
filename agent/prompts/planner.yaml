@@ -16,3 +16,15 @@ user: |
   web search, academic papers, or GitHub repositories.
 
   Return JSON: {{ "subquestions": [...], "reasoning": "..." }}
+
+replan_user: |
+  Original Query: {query}
+  Current Iteration: {iteration} of {max_iterations}
+
+  Research so far was evaluated and is missing coverage in these critical areas:
+  {missing_areas}
+
+  Your task is to generate EXACTLY {n} NEW follow-up sub-questions that drill deeper SPECIFICALLY into the missing areas above.
+  Do not ignore the missing areas. Each sub-question must be specific, researchable via search engines or academic databases, and distinct from any previously asked questions.
+
+  Return JSON: {{ "subquestions": [...], "reasoning": "..." }}
