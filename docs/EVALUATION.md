@@ -223,8 +223,8 @@ The evaluation pipeline is integrated into GitHub Actions as a **manually-trigge
 ### Pipeline Steps
 
 1. **Setup**: Install uv, Python 3.11, project dependencies
-2. **Docker stack**: Build and start the full 6-service Docker Compose stack
-3. **Health checks**: Wait for all services (Redis, 3 MCP servers, agent API) to report healthy
+2. **Docker stack**: Build and start the full 5-service Docker Compose stack
+3. **Health checks**: Wait for all services (3 MCP servers, agent API) to report healthy
 4. **Benchmark**: Run `evaluation/run_benchmark.py` with configured parameters
 5. **Artifacts**: Upload results to GitHub Actions artifacts (90-day retention)
 6. **Teardown**: `docker compose down -v`

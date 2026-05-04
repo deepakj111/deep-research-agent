@@ -46,9 +46,6 @@ def score_source_trust(source: dict, source_type: str) -> float:
 
 def should_continue(state: ResearchState) -> str:
     critique = state.get("critique")
-    meta = state.get("run_metadata")
-    if meta and meta.iteration_count >= settings.max_iterations:
-        return "synthesize"
     if critique and critique.should_continue:
         return "continue"
     return "synthesize"

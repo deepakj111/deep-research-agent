@@ -1,7 +1,7 @@
 # agent/state.py
 import operator
 from datetime import UTC, datetime
-from typing import Annotated, TypedDict
+from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -57,14 +57,14 @@ class Citation(BaseModel):
     source_url: str
     title: str
     exact_snippet: str
-    source_type: str  # "web" | "arxiv" | "github"
+    source_type: Literal["web", "arxiv", "github"]
     trust_score: float
 
 
 class Finding(BaseModel):
     claim: str
     citations: list[Citation]
-    confidence: str  # "high" | "medium" | "low"
+    confidence: Literal["high", "medium", "low"]
 
 
 # Phase 2 — structured contradiction tracking
@@ -72,7 +72,7 @@ class ContradictionRecord(BaseModel):
     claim_a: str
     claim_b: str
     resolution: str
-    preferred_source: str  # "gpt4o" | "claude" | "unresolved"
+    preferred_source: Literal["gpt4o", "claude", "unresolved"]
 
 
 class ReportOutput(BaseModel):

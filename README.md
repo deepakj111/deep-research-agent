@@ -20,7 +20,7 @@ Built with **LangGraph** for stateful agent orchestration, **Model Context Proto
 | **PII Filtering** | Regex-based middleware scrubbing SSN, credit card, email, phone, and IP address patterns from all MCP tool outputs before they enter agent state. |
 | **Observability** | Custom async-safe SQLite tracer logging every tool call, node execution, token count, cost estimate, and evaluation score — independent of LangSmith. |
 | **LLM-as-Judge Evaluation** | Automated 5-dimension scoring (faithfulness, answer relevancy, source coverage, citation accuracy, coherence) with CI quality gates. |
-| **Full Docker Stack** | 6-service `docker-compose.yml`: Redis → 3 MCP servers → FastAPI agent API → Streamlit frontend, with health checks, memory limits, and non-root containers. |
+| **Full Docker Stack** | 5-service `docker-compose.yml`: 3 MCP servers → FastAPI agent API → Streamlit frontend, with health checks, memory limits, and non-root containers. |
 
 ---
 
@@ -42,14 +42,9 @@ Built with **LangGraph** for stateful agent orchestration, **Model Context Proto
      ┌────────┴───┐ ┌──────┴──────┐ ┌──┴──────────┐
      │ Web Search │ │   arXiv     │ │   GitHub     │
      │ MCP :8001  │ │  MCP :8002  │ │  MCP :8003   │
+     │ (SQLite    │ │ (SQLite     │ │ (SQLite      │
+     │  cache)    │ │  cache)     │ │  cache)      │
      └────────────┘ └─────────────┘ └──────────────┘
-              │            │            │
-              └────────────┼────────────┘
-                           │
-                     ┌─────┴──────┐
-                     │   Redis    │  ← Shared cache
-                     │   :6379    │
-                     └────────────┘
 ```
 
 > For a detailed architecture walkthrough, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
@@ -166,7 +161,7 @@ deep-research-agent/
 │   ├── eval.yml                  # Weekly LLM-as-judge benchmark
 │   ├── security.yml              # uv audit + bandit
 │   └── secrets-check.yml         # Gitleaks secret scanning
-├── docker-compose.yml            # Production 6-service stack
+├── docker-compose.yml            # Production 5-service stack
 ├── docker-compose.dev.yml        # Dev overrides (hot-reload)
 ├── Dockerfile                    # Agent API container
 ├── Makefile                      # Build/test/deploy commands

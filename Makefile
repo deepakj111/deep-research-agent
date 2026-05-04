@@ -26,7 +26,7 @@ build:
 
 docker-test:
 	docker compose build
-	docker compose up -d redis web-search-mcp arxiv-mcp github-mcp
+	docker compose up -d web-search-mcp arxiv-mcp github-mcp
 	@echo "Waiting for MCP services..."
 	@timeout 60 bash -c 'until curl -sf http://localhost:8001/health; do sleep 2; done'
 	@timeout 60 bash -c 'until curl -sf http://localhost:8002/health; do sleep 2; done'

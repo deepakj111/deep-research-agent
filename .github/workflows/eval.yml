@@ -67,8 +67,6 @@ jobs:
 
       - name: Wait for all services to be healthy
         run: |
-          echo "Waiting for Redis..."
-          timeout 30 bash -c 'until docker compose exec -T redis redis-cli ping 2>/dev/null | grep -q PONG; do sleep 2; done'
           echo "Waiting for web-search-mcp..."
           timeout 60 bash -c 'until curl -sf http://localhost:8001/health; do sleep 3; done'
           echo "Waiting for arxiv-mcp..."

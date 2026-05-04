@@ -56,11 +56,6 @@ The system follows a **microservices architecture** with clear separation of con
 │  │ :8001 (Tavily) │  │  :8002 (Atom)  │  │  :8003 (REST API) │  │
 │  │ JWT + Cache    │  │  JWT + Cache   │  │  JWT + Cache      │  │
 │  └────────────────┘  └────────────────┘  └───────────────────┘  │
-│                                │                                 │
-│                         ┌──────┴──────┐                          │
-│                         │    Redis    │                          │
-│                         │    :6379    │                          │
-│                         └─────────────┘                          │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -139,7 +134,7 @@ The graph uses **conditional edges** after the critic node, mediated by the `che
 
 ### Classifier (`agent/nodes/classifier.py`)
 
-- **Model**: GPT-4o-mini (fast, cheap)
+- **Model**: Configurable via `settings.default_model` (lazy-initialized)
 - **Purpose**: Classifies the query difficulty as `narrow`, `broad`, or `ambiguous`
 - **Output**: Sets `query_difficulty` in state, suggests number of sub-questions (3/4/6)
 - **Design choice**: Uses structured output (`ClassifierOutput` Pydantic model) for deterministic parsing

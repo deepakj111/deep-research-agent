@@ -18,7 +18,7 @@ This document covers the production infrastructure of the DeepResearch Agent —
 
 ## Docker Stack
 
-The production deployment is a **6-service Docker Compose stack** defined in `docker-compose.yml`:
+The production deployment is a **5-service Docker Compose stack** defined in `docker-compose.yml`:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -38,12 +38,7 @@ The production deployment is a **6-service Docker Compose stack** defined in `do
 │  ┌────────────────┐ ┌──────────┐ ┌───────────────┐     │
 │  │ web-search-mcp │ │arxiv-mcp │ │ github-mcp    │     │
 │  │ :8001          │ │ :8002    │ │ :8003         │     │
-│  │ depends──▸redis│ │          │ │               │     │
 │  └────────────────┘ └──────────┘ └───────────────┘     │
-│                                                          │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │ redis (:6379)                                     │   │
-│  └──────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -51,9 +46,8 @@ The production deployment is a **6-service Docker Compose stack** defined in `do
 
 Docker Compose dependency conditions enforce strict ordering:
 
-1. **Redis** starts first (no dependencies)
-2. **MCP servers** start after Redis is healthy (`redis-cli ping` returns PONG)
-3. **Agent API** starts after all three MCP servers are healthy (`curl /health` returns 200)
+1. **MCP servers** start first (no dependencies)
+2. **Agent API** starts after all three MCP servers are healthy (`curl /health` returns 200)
 4. **Streamlit** starts after the agent API is healthy
 
 ---
@@ -76,7 +70,6 @@ All Dockerfiles follow production best practices:
 
 | Service | Memory Limit | Restart Policy |
 |---|---|---|
-| Redis | — | `unless-stopped` |
 | Web Search MCP | 256M | `unless-stopped` |
 | arXiv MCP | 256M | `unless-stopped` |
 | GitHub MCP | 256M | `unless-stopped` |
@@ -87,7 +80,6 @@ All Dockerfiles follow production best practices:
 
 | Service | Probe | Interval | Retries |
 |---|---|---|---|
-| Redis | `redis-cli ping` | 5s | 5 |
 | MCP servers | `curl -f http://localhost:{port}/health` | 10s | 3 |
 | Agent API | `curl -f http://localhost:8080/health` | 15s | 3 |
 | Streamlit | `curl -f http://localhost:8501/_stcore/health` | 15s | 3 |

@@ -85,7 +85,7 @@ with col2:
         '<div class="glass-panel animate-in">'
         '<h4 style="margin-top:0;">🔧 MCP Architecture</h4>'
         "<p>Three independent MCP servers over HTTP/SSE with "
-        "JWT authentication, Redis caching, and per-tool "
+        "JWT authentication, SQLite caching, and per-tool "
         "circuit breakers for graceful degradation.</p>"
         "</div>",
         unsafe_allow_html=True,
