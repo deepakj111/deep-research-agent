@@ -238,17 +238,22 @@ class TestReportFormatter:
 class TestSynthesizerEdgeCases:
     @pytest.mark.asyncio
     async def test_synthesizer_returns_none_report_when_both_models_fail(self, base_state):
-        from unittest.mock import patch
+        from unittest.mock import MagicMock, patch
 
         from agent.nodes.synthesizer import run
 
         base_state["findings"] = []
 
         # Patch _invoke_synth_llm to raise for both calls (bypasses tenacity retry)
+        # Also patch LLM getters so init_chat_model is never called (no API key in CI)
         async def _fail(*args, **kwargs):
             raise RuntimeError("Model failed")
 
-        with patch("agent.nodes.synthesizer._invoke_synth_llm", side_effect=_fail):
+        with (
+            patch("agent.nodes.synthesizer._get_gpt4o", return_value=MagicMock()),
+            patch("agent.nodes.synthesizer._get_claude", return_value=MagicMock()),
+            patch("agent.nodes.synthesizer._invoke_synth_llm", side_effect=_fail),
+        ):
             result = await run(base_state)
 
             # When both models fail, final_report must be None
@@ -259,7 +264,7 @@ class TestSynthesizerEdgeCases:
 
     @pytest.mark.asyncio
     async def test_synthesizer_uses_fallback_when_one_model_fails(self, base_state):
-        from unittest.mock import patch
+        from unittest.mock import MagicMock, patch
 
         from agent.nodes.synthesizer import run
         from agent.state import ReportOutput
@@ -283,9 +288,13 @@ class TestSynthesizerEdgeCases:
                 raise RuntimeError("GPT failed")
             return fallback_report
 
-        with patch(
-            "agent.nodes.synthesizer._invoke_synth_llm",
-            side_effect=_gpt_fails_claude_succeeds,
+        with (
+            patch("agent.nodes.synthesizer._get_gpt4o", return_value=MagicMock()),
+            patch("agent.nodes.synthesizer._get_claude", return_value=MagicMock()),
+            patch(
+                "agent.nodes.synthesizer._invoke_synth_llm",
+                side_effect=_gpt_fails_claude_succeeds,
+            ),
         ):
             result = await run(base_state)
 
