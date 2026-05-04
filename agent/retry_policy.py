@@ -23,7 +23,7 @@ import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class ToolErrorPolicy:
     """Immutable error policy for a single MCP tool."""
 
     max_retries: int = 2
-    backoff: str = "exponential"  # "exponential" | "linear"
+    backoff: Literal["exponential", "linear"] = "exponential"
     base_delay_seconds: float = 1.0
     fallback: str | None = None  # None | "skip_and_note"
     failure_note: str = "[Tool unavailable]"

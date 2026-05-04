@@ -17,18 +17,21 @@ async def test_graph_compiles_without_error():
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_classifier_node_runs():
+    from unittest.mock import MagicMock
+
+    from pydantic import BaseModel
+
     from agent.nodes.classifier import run
 
-    with patch("agent.nodes.classifier._llm") as mock_llm:
-        from pydantic import BaseModel
+    class FakeOutput(BaseModel):
+        difficulty: str = "narrow"
+        reasoning: str = "Specific query"
+        suggested_num_questions: int = 3
 
-        class FakeOutput(BaseModel):
-            difficulty: str = "narrow"
-            reasoning: str = "Specific query"
-            suggested_num_questions: int = 3
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=FakeOutput())
 
-        mock_llm.ainvoke = AsyncMock(return_value=FakeOutput())
-
+    with patch("agent.nodes.classifier._get_llm", return_value=mock_llm):
         state = ResearchState(
             query="quantum computing",
             profile="fast",

@@ -1,23 +1,24 @@
 # agent/nodes/critic.py
+import functools
+from pathlib import Path
+
 import yaml
 from langchain.chat_models import init_chat_model
 
 from agent.state import CritiqueOutput, ResearchState, RunMetadata
 from config.settings import settings
 
-with open("agent/prompts/critic.yaml") as f:
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+with open(_PROMPTS_DIR / "critic.yaml") as f:
     _prompts = yaml.safe_load(f)
 
 CRITIC_PROMPT = _prompts["evaluation_prompt"]
 
-_llm = None
 
-
+@functools.lru_cache(maxsize=1)
 def _get_llm():
-    global _llm
-    if _llm is None:
-        _llm = init_chat_model(settings.default_model).with_structured_output(CritiqueOutput)
-    return _llm
+    return init_chat_model(settings.default_model).with_structured_output(CritiqueOutput)
 
 
 def score_source_trust(source: dict, source_type: str) -> float:

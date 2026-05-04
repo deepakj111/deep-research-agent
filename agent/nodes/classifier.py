@@ -1,3 +1,6 @@
+import functools
+from typing import Literal
+
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
 
@@ -6,19 +9,14 @@ from config.settings import settings
 
 
 class ClassifierOutput(BaseModel):
-    difficulty: str  # "narrow" | "broad" | "ambiguous"
+    difficulty: Literal["narrow", "broad", "ambiguous"]
     reasoning: str
     suggested_num_questions: int
 
 
-_llm = None
-
-
+@functools.lru_cache(maxsize=1)
 def _get_llm():
-    global _llm
-    if _llm is None:
-        _llm = init_chat_model(settings.default_model).with_structured_output(ClassifierOutput)
-    return _llm
+    return init_chat_model(settings.default_model).with_structured_output(ClassifierOutput)
 
 
 CLASSIFIER_PROMPT = """Classify this research query:

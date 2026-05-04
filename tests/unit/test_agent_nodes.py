@@ -238,19 +238,17 @@ class TestReportFormatter:
 class TestSynthesizerEdgeCases:
     @pytest.mark.asyncio
     async def test_synthesizer_returns_none_report_when_both_models_fail(self, base_state):
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         from agent.nodes.synthesizer import run
 
         base_state["findings"] = []
 
-        with (
-            patch("agent.nodes.synthesizer._gpt4o") as mock_gpt,
-            patch("agent.nodes.synthesizer._claude") as mock_claude,
-        ):
-            mock_gpt.ainvoke = AsyncMock(side_effect=RuntimeError("GPT failed"))
-            mock_claude.ainvoke = AsyncMock(side_effect=RuntimeError("Claude failed"))
+        # Patch _invoke_synth_llm to raise for both calls (bypasses tenacity retry)
+        async def _fail(*args, **kwargs):
+            raise RuntimeError("Model failed")
 
+        with patch("agent.nodes.synthesizer._invoke_synth_llm", side_effect=_fail):
             result = await run(base_state)
 
             # When both models fail, final_report must be None
@@ -261,7 +259,7 @@ class TestSynthesizerEdgeCases:
 
     @pytest.mark.asyncio
     async def test_synthesizer_uses_fallback_when_one_model_fails(self, base_state):
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         from agent.nodes.synthesizer import run
         from agent.state import ReportOutput
@@ -276,13 +274,19 @@ class TestSynthesizerEdgeCases:
             recommended_next_steps=[],
         )
 
-        with (
-            patch("agent.nodes.synthesizer._gpt4o") as mock_gpt,
-            patch("agent.nodes.synthesizer._claude") as mock_claude,
-        ):
-            mock_gpt.ainvoke = AsyncMock(side_effect=RuntimeError("GPT failed"))
-            mock_claude.ainvoke = AsyncMock(return_value=fallback_report)
+        call_count = 0
 
+        async def _gpt_fails_claude_succeeds(llm, prompt):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("GPT failed")
+            return fallback_report
+
+        with patch(
+            "agent.nodes.synthesizer._invoke_synth_llm",
+            side_effect=_gpt_fails_claude_succeeds,
+        ):
             result = await run(base_state)
 
             assert result["final_report"] is not None

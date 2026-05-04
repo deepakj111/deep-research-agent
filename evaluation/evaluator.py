@@ -18,6 +18,7 @@ Design choices:
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 from typing import Any
 
@@ -143,17 +144,13 @@ Output only a JSON object matching this schema — no prose outside the JSON:
 
 # ──────────────────────── Lazy LLM Instance ──────────────────────────────────
 
-_eval_llm = None
 
-
-def _get_eval_llm():  # type: ignore[return]
+@functools.lru_cache(maxsize=1)
+def _get_eval_llm():
     """Lazily construct the evaluation LLM to avoid import-time side effects."""
-    global _eval_llm
-    if _eval_llm is None:
-        from langchain_openai import ChatOpenAI  # noqa: PLC0415
+    from langchain_openai import ChatOpenAI  # noqa: PLC0415
 
-        _eval_llm = ChatOpenAI(model="gpt-4o", temperature=0).with_structured_output(EvalScores)
-    return _eval_llm
+    return ChatOpenAI(model="gpt-4o", temperature=0).with_structured_output(EvalScores)
 
 
 # ──────────────────────── Report Formatting Helpers ──────────────────────────

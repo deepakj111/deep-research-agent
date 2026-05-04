@@ -1,5 +1,7 @@
 # agent/nodes/synthesizer.py
 import asyncio
+import functools
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -10,7 +12,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from agent.state import ContradictionRecord, ReportOutput, ResearchState
 from config.settings import settings
 
-with open("agent/prompts/synthesizer.yaml") as f:
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+with open(_PROMPTS_DIR / "synthesizer.yaml") as f:
     _prompts = yaml.safe_load(f)
 
 SYNTHESIS_PROMPT = _prompts["synthesis_prompt"]
@@ -22,32 +26,19 @@ class ReconcileOutput(BaseModel):
     summary: str
 
 
-_gpt4o = None
-_claude = None
-_reconciler = None
-
-
+@functools.lru_cache(maxsize=1)
 def _get_gpt4o():
-    global _gpt4o
-    if _gpt4o is None:
-        _gpt4o = init_chat_model(settings.default_model).with_structured_output(ReportOutput)
-    return _gpt4o
+    return init_chat_model(settings.default_model).with_structured_output(ReportOutput)
 
 
+@functools.lru_cache(maxsize=1)
 def _get_claude():
-    global _claude
-    if _claude is None:
-        _claude = init_chat_model(settings.secondary_model).with_structured_output(ReportOutput)  # type: ignore[call-arg]
-    return _claude
+    return init_chat_model(settings.secondary_model).with_structured_output(ReportOutput)  # type: ignore[call-arg]
 
 
+@functools.lru_cache(maxsize=1)
 def _get_reconciler():
-    global _reconciler
-    if _reconciler is None:
-        _reconciler = init_chat_model(settings.default_model).with_structured_output(
-            ReconcileOutput
-        )
-    return _reconciler
+    return init_chat_model(settings.default_model).with_structured_output(ReconcileOutput)
 
 
 def build_synthesis_context(findings: list[Any]) -> str:

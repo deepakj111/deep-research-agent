@@ -1,3 +1,6 @@
+import functools
+from pathlib import Path
+
 import yaml
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
@@ -7,7 +10,9 @@ from agent.state import ResearchState
 from config.profiles import load_profile
 from config.settings import settings
 
-with open("agent/prompts/planner.yaml") as f:
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+with open(_PROMPTS_DIR / "planner.yaml") as f:
     _prompts = yaml.safe_load(f)
 
 PLANNER_SYSTEM = _prompts["system"]
@@ -19,14 +24,9 @@ class PlanOutput(BaseModel):
     reasoning: str
 
 
-_planner_llm = None
-
-
+@functools.lru_cache(maxsize=1)
 def _get_planner_llm():
-    global _planner_llm
-    if _planner_llm is None:
-        _planner_llm = init_chat_model(settings.default_model).with_structured_output(PlanOutput)
-    return _planner_llm
+    return init_chat_model(settings.default_model).with_structured_output(PlanOutput)
 
 
 NUM_QUESTIONS = {

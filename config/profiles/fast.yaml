@@ -3,7 +3,6 @@ description: "Quick scan: 3-5 min, lower cost"
 max_web_results: 3
 max_arxiv_papers: 2
 max_github_repos: 3
-llm_model: gpt-4o-mini
 max_iterations: 8
 synthesis_depth: brief
 query_decomposition: breadth-first
