@@ -10,7 +10,14 @@ with open("agent/prompts/critic.yaml") as f:
 
 CRITIC_PROMPT = _prompts["evaluation_prompt"]
 
-_llm = init_chat_model(settings.default_model).with_structured_output(CritiqueOutput)
+_llm = None
+
+
+def _get_llm():
+    global _llm
+    if _llm is None:
+        _llm = init_chat_model(settings.default_model).with_structured_output(CritiqueOutput)
+    return _llm
 
 
 def score_source_trust(source: dict, source_type: str) -> float:
@@ -52,7 +59,7 @@ async def run(state: ResearchState) -> dict:
     meta = state.get("run_metadata")
     iteration_count = meta.iteration_count if meta else 0
 
-    critique: CritiqueOutput = await _llm.ainvoke(  # type: ignore[assignment]
+    critique: CritiqueOutput = await _get_llm().ainvoke(  # type: ignore[assignment]
         CRITIC_PROMPT.format(
             query=state["query"],
             subquestions=state.get("subquestions", []),

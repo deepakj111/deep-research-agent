@@ -16,16 +16,38 @@ with open("agent/prompts/synthesizer.yaml") as f:
 SYNTHESIS_PROMPT = _prompts["synthesis_prompt"]
 RECONCILE_PROMPT = _prompts["reconcile_prompt"]
 
-_gpt4o = init_chat_model(settings.default_model).with_structured_output(ReportOutput)
-_claude = init_chat_model(settings.secondary_model).with_structured_output(ReportOutput)  # type: ignore[call-arg]
-
 
 class ReconcileOutput(BaseModel):
     contradictions: list[ContradictionRecord]
     summary: str
 
 
-_reconciler = init_chat_model(settings.default_model).with_structured_output(ReconcileOutput)
+_gpt4o = None
+_claude = None
+_reconciler = None
+
+
+def _get_gpt4o():
+    global _gpt4o
+    if _gpt4o is None:
+        _gpt4o = init_chat_model(settings.default_model).with_structured_output(ReportOutput)
+    return _gpt4o
+
+
+def _get_claude():
+    global _claude
+    if _claude is None:
+        _claude = init_chat_model(settings.secondary_model).with_structured_output(ReportOutput)  # type: ignore[call-arg]
+    return _claude
+
+
+def _get_reconciler():
+    global _reconciler
+    if _reconciler is None:
+        _reconciler = init_chat_model(settings.default_model).with_structured_output(
+            ReconcileOutput
+        )
+    return _reconciler
 
 
 def build_synthesis_context(findings: list[Any]) -> str:
@@ -60,8 +82,8 @@ async def run(state: ResearchState) -> dict:
     prompt = SYNTHESIS_PROMPT.format(query=state["query"], context=context)
 
     results = await asyncio.gather(
-        _invoke_synth_llm(_gpt4o, prompt),
-        _invoke_synth_llm(_claude, prompt),
+        _invoke_synth_llm(_get_gpt4o(), prompt),
+        _invoke_synth_llm(_get_claude(), prompt),
         return_exceptions=True,
     )
     gpt_report: ReportOutput | Exception = results[0]  # type: ignore[assignment]
@@ -90,7 +112,7 @@ async def run(state: ResearchState) -> dict:
         final = gpt_report
     else:
         reconcile: ReconcileOutput = await _invoke_synth_llm(
-            _reconciler,  # type: ignore[assignment]
+            _get_reconciler(),  # type: ignore[assignment]
             RECONCILE_PROMPT.format(
                 query=state["query"],
                 summary_a=gpt_report.executive_summary,  # type: ignore[union-attr]

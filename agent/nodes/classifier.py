@@ -2,6 +2,7 @@ from langchain.chat_models import init_chat_model
 from pydantic import BaseModel
 
 from agent.state import ResearchState
+from config.settings import settings
 
 
 class ClassifierOutput(BaseModel):
@@ -10,7 +11,15 @@ class ClassifierOutput(BaseModel):
     suggested_num_questions: int
 
 
-_llm = init_chat_model("gpt-4o-mini").with_structured_output(ClassifierOutput)
+_llm = None
+
+
+def _get_llm():
+    global _llm
+    if _llm is None:
+        _llm = init_chat_model(settings.default_model).with_structured_output(ClassifierOutput)
+    return _llm
+
 
 CLASSIFIER_PROMPT = """Classify this research query:
 
@@ -25,7 +34,7 @@ Output JSON only. Be concise."""
 
 
 async def run(state: ResearchState) -> dict:
-    result: ClassifierOutput = await _llm.ainvoke(  # type: ignore[assignment]
+    result: ClassifierOutput = await _get_llm().ainvoke(  # type: ignore[assignment]
         CLASSIFIER_PROMPT.format(query=state["query"])
     )
     return {
