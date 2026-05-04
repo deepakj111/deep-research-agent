@@ -147,6 +147,78 @@ def _get_report_from_thread(thread_id: str):
     return report
 
 
+# ─────────────────────── Shared SSE Event Processing ─────────────────────────
+
+
+async def _stream_graph_events(
+    run_id: str,
+    thread_config: RunnableConfig,
+    input_payload: dict | None,
+):
+    """
+    Shared async generator that streams LangGraph events as SSE messages.
+
+    Handles all event types (node_start, tool_call, tool_result, token,
+    complete) and auto-resumes follow-up iterations when the graph pauses
+    at the planner interrupt.
+
+    Yields:
+        SSE-formatted strings for each graph event.
+        A final "writer_completed" sentinel is NOT yielded — callers check
+        the graph state after this generator exhausts.
+    """
+    while True:
+        async for event in graph.astream_events(
+            input_payload,
+            version="v2",
+            config=thread_config,
+        ):
+            kind = event["event"]
+
+            if kind == "on_chain_start":
+                yield sse({"type": "node_start", "node": event["name"]})
+
+            elif kind == "on_tool_start":
+                yield sse(
+                    {
+                        "type": "tool_call",
+                        "tool": event["name"],
+                        "input": str(event.get("data", {}).get("input", ""))[:200],
+                    }
+                )
+
+            elif kind == "on_tool_end":
+                output = event.get("data", {}).get("output", [])
+                yield sse(
+                    {
+                        "type": "tool_result",
+                        "tool": event["name"],
+                        "count": len(output) if isinstance(output, list) else 1,
+                    }
+                )
+
+            elif kind == "on_chat_model_stream":
+                chunk = event["data"].get("chunk")
+                if chunk and hasattr(chunk, "content") and chunk.content:
+                    yield sse({"type": "token", "content": chunk.content})
+
+            elif kind == "on_chain_end" and event["name"] == "writer":
+                yield sse({"type": "complete", "run_id": run_id})
+
+        # Event stream ended. Check if paused at planner for auto-resume.
+        state_snapshot = graph.get_state(thread_config)
+        if state_snapshot and state_snapshot.next == ("planner",):
+            values = state_snapshot.values
+            meta = values.get("run_metadata")
+            iteration = meta.iteration_count if meta else 0
+            if iteration > 0:
+                # Auto-resume follow-up iterations
+                input_payload = None
+                continue
+        # Either not paused at planner, or iteration == 0 (needs HITL) — stop streaming
+        break
+
+
 # ─────────────────────── Endpoints ───────────────────────────────────────────
 
 
@@ -188,75 +260,32 @@ async def stream_research(payload: ResearchRequest, request: Request, tracer=Dep
                 "thought_log": [],
             }
 
-            while True:
-                async for event in graph.astream_events(
-                    input_payload,
-                    version="v2",
-                    config=thread_config,
-                ):
-                    kind = event["event"]
+            async for chunk in _stream_graph_events(run_id, thread_config, input_payload):
+                yield chunk
+                if '"type": "complete"' in chunk:
+                    writer_completed = True
 
-                    if kind == "on_chain_start":
-                        yield sse({"type": "node_start", "node": event["name"]})
+            # If paused at planner on first iteration, emit HITL interrupt
+            state_snapshot = graph.get_state(thread_config)
+            if state_snapshot and state_snapshot.next == ("planner",):
+                values = state_snapshot.values
+                meta = values.get("run_metadata")
+                iteration = meta.iteration_count if meta else 0
 
-                    elif kind == "on_tool_start":
-                        yield sse(
-                            {
-                                "type": "tool_call",
-                                "tool": event["name"],
-                                "input": str(event.get("data", {}).get("input", ""))[:200],
-                            }
-                        )
-
-                    elif kind == "on_tool_end":
-                        output = event.get("data", {}).get("output", [])
-                        yield sse(
-                            {
-                                "type": "tool_result",
-                                "tool": event["name"],
-                                "count": len(output) if isinstance(output, list) else 1,
-                            }
-                        )
-
-                    elif kind == "on_chat_model_stream":
-                        chunk = event["data"].get("chunk")
-                        if chunk and hasattr(chunk, "content") and chunk.content:
-                            yield sse({"type": "token", "content": chunk.content})
-
-                    elif kind == "on_chain_end" and event["name"] == "writer":
-                        writer_completed = True
-                        yield sse({"type": "complete", "run_id": run_id})
-
-                # Event stream ended. Check if paused at planner.
-                state_snapshot = graph.get_state(thread_config)
-                if state_snapshot and state_snapshot.next == ("planner",):
-                    values = state_snapshot.values
-                    meta = values.get("run_metadata")
-                    iteration = meta.iteration_count if meta else 0
-
-                    if iteration == 0:
-                        difficulty = values.get("query_difficulty", "narrow")
-                        n_questions = {"narrow": 3, "broad": 6, "ambiguous": 4}.get(difficulty, 4)
-                        estimated_cost = estimate_cost(
-                            "gpt-4o", n_questions * 800, n_questions * 400
-                        )
-                        yield sse(
-                            {
-                                "type": "hitl_interrupt",
-                                "thread_id": run_id,
-                                "query_difficulty": difficulty,
-                                "estimated_subquestions": n_questions,
-                                "estimated_cost_usd": round(estimated_cost, 4),
-                                "message": "Plan ready for approval. POST /research/approve to continue.",
-                            }
-                        )
-                        break
-                    else:
-                        # Auto-resume follow-up iterations by re-entering the stream loop
-                        input_payload = None
-                        continue
-                else:
-                    break
+                if iteration == 0:
+                    difficulty = values.get("query_difficulty", "narrow")
+                    n_questions = {"narrow": 3, "broad": 6, "ambiguous": 4}.get(difficulty, 4)
+                    estimated_cost = estimate_cost("gpt-4o", n_questions * 800, n_questions * 400)
+                    yield sse(
+                        {
+                            "type": "hitl_interrupt",
+                            "thread_id": run_id,
+                            "query_difficulty": difficulty,
+                            "estimated_subquestions": n_questions,
+                            "estimated_cost_usd": round(estimated_cost, 4),
+                            "message": "Plan ready for approval. POST /research/approve to continue.",
+                        }
+                    )
 
         finally:
             if writer_completed:
@@ -306,57 +335,10 @@ async def approve_plan(request: ApproveRequest, tracer=Depends(get_tracer)):
         writer_completed = False
 
         try:
-            input_payload = None
-            while True:
-                async for event in graph.astream_events(
-                    input_payload, version="v2", config=thread_config
-                ):
-                    kind = event["event"]
-
-                    if kind == "on_chain_start":
-                        yield sse({"type": "node_start", "node": event["name"]})
-
-                    elif kind == "on_tool_start":
-                        yield sse(
-                            {
-                                "type": "tool_call",
-                                "tool": event["name"],
-                                "input": str(event.get("data", {}).get("input", ""))[:200],
-                            }
-                        )
-
-                    elif kind == "on_tool_end":
-                        output = event.get("data", {}).get("output", [])
-                        yield sse(
-                            {
-                                "type": "tool_result",
-                                "tool": event["name"],
-                                "count": len(output) if isinstance(output, list) else 1,
-                            }
-                        )
-
-                    elif kind == "on_chat_model_stream":
-                        chunk = event["data"].get("chunk")
-                        if chunk and hasattr(chunk, "content") and chunk.content:
-                            yield sse({"type": "token", "content": chunk.content})
-
-                    elif kind == "on_chain_end" and event["name"] == "writer":
-                        writer_completed = True
-                        yield sse({"type": "complete", "run_id": request.thread_id})
-
-                # Check for auto-resume if paused at planner for multi-iterations
-                state_snapshot = graph.get_state(thread_config)
-                if state_snapshot and state_snapshot.next == ("planner",):
-                    values = state_snapshot.values
-                    meta = values.get("run_metadata")
-                    iteration = meta.iteration_count if meta else 0
-                    if iteration == 0:
-                        break  # Shouldn't happen, but break to be safe
-                    else:
-                        input_payload = None
-                        continue
-                else:
-                    break
+            async for chunk in _stream_graph_events(request.thread_id, thread_config, None):
+                yield chunk
+                if '"type": "complete"' in chunk:
+                    writer_completed = True
         finally:
             if writer_completed:
                 await _finalize_run(request.thread_id, thread_config, run_start, tracer)
