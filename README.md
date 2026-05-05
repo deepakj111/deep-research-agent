@@ -74,16 +74,17 @@ Edit `.env` with your API keys:
 | Key | Purpose | Get it from |
 |---|---|---|
 | `OPENAI_API_KEY` | Primary LLM (GPT-4o) | [platform.openai.com](https://platform.openai.com/api-keys) |
-| `ANTHROPIC_API_KEY` | Secondary LLM (Claude Sonnet) | [console.anthropic.com](https://console.anthropic.com) |
+| `ANTHROPIC_API_KEY` | Secondary LLM (Claude Sonnet 4.5) | [console.anthropic.com](https://console.anthropic.com) |
 | `TAVILY_API_KEY` | Web search | [app.tavily.com](https://app.tavily.com) |
 | `GITHUB_TOKEN` | GitHub API | GitHub → Settings → Developer Settings → Tokens |
 | `LANGCHAIN_API_KEY` | LangSmith tracing (optional) | [smith.langchain.com](https://smith.langchain.com) |
 | `MCP_JWT_SECRET` | MCP server authentication | Any random string, 32+ characters |
+| `FRONTEND_PASSWORD` | Streamlit login gate | Any password string |
 
 ### Running
 
 ```bash
-# Production — full Docker stack (6 services)
+# Production — full Docker stack (5 services)
 make run
 
 # Development — hot-reload with volume mounts
@@ -140,6 +141,7 @@ deep-research-agent/
 │   └── github/                   # GitHub REST API MCP
 ├── config/
 │   ├── settings.py               # Pydantic Settings (env vars)
+│   ├── profiles.py               # Centralized YAML profile loader (cached)
 │   └── profiles/                 # fast.yaml / deep.yaml research profiles
 ├── observability/
 │   ├── tracer.py                 # Async SQLite run tracer
@@ -150,8 +152,10 @@ deep-research-agent/
 │   ├── run_benchmark.py          # Benchmark runner with CI gate
 │   └── benchmark_queries.json    # 10-query evaluation dataset
 ├── utils/
-│   ├── cost_estimator.py         # Dynamic LLM pricing (LiteLLM community data) + JWT helper
+│   ├── auth.py                   # JWT token generation for MCP server auth
 │   ├── callbacks.py              # LangChain token usage callback
+│   ├── cost_estimator.py         # Dynamic LLM pricing (LiteLLM community data)
+│   ├── logger.py                 # Centralized logging setup
 │   └── report_formatter.py       # ReportOutput → Markdown / HTML / PDF
 ├── tests/
 │   ├── unit/                     # 131 unit tests

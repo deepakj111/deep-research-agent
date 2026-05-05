@@ -34,9 +34,8 @@ def check_budget(state: ResearchState) -> str:
     Evaluate whether the current run has exceeded its budget.
 
     Returns:
-        "budget_exceeded" — route to synthesizer immediately
-        "continue"        — allow the critic's decision to stand
-        "synthesize"      — critic says done, proceed normally
+        "synthesize"  — budget exceeded OR critic says done, route to synthesizer
+        "continue"    — budget OK and critic wants another research iteration
 
     This function is designed to wrap the critic's should_continue decision.
     It's called from the graph's conditional edge after the critic node.

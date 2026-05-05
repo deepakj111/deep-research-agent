@@ -32,8 +32,8 @@ The system follows a **microservices architecture** with clear separation of con
 │                                │                                 │
 │  ┌──────────┐  ┌──────────┐  ┌┴─────────┐  ┌────────────────┐  │
 │  │Classifier│→ │ Planner  │→ │Supervisor│→ │   Sub-Agents   │  │
-│  │(GPT-4o-  │  │ (GPT-4o) │  │(Fan-out) │  │ web / arXiv /  │  │
-│  │  mini)   │  │  [HITL]  │  │  [Send]  │  │    github      │  │
+│  │(GPT-4o   │  │ (GPT-4o) │  │(Fan-out) │  │ web / arXiv /  │  │
+│  │ default) │  │  [HITL]  │  │  [Send]  │  │    github      │  │
 │  └──────────┘  └──────────┘  └──────────┘  └───────┬────────┘  │
 │                                                     │           │
 │  ┌──────────────────────────────────────────────────┤           │
@@ -237,10 +237,11 @@ Two profile configurations (`config/profiles/fast.yaml` and `deep.yaml`) control
 | `max_web_results` | 3 | 8 |
 | `max_arxiv_papers` | 2 | 5 |
 | `max_github_repos` | 3 | 5 |
-| `llm_model` | gpt-4o-mini | gpt-4o |
 | `max_iterations` | 8 | 15 |
 | `synthesis_depth` | brief | comprehensive |
 | `query_decomposition` | breadth-first | depth-first |
+
+> **Note:** The LLM model is not per-profile — it is a global setting controlled by `settings.default_model` (default: `gpt-4o`) and `settings.secondary_model` (default: `claude-sonnet-4-5`). A third query decomposition strategy, `hypothesis-driven`, is also implemented and can be used in custom profiles.
 
 ---
 
@@ -250,15 +251,21 @@ The three MCP servers are independent microservices built with `FastMCP`:
 
 ### Server Architecture
 
-Each server follows an identical pattern:
+Each server follows an identical pattern, with shared authentication and caching modules:
 
 ```
-FastMCP server
-├── server.py          # Tool registration + health endpoint
-├── auth.py            # JWT Bearer token validation decorator
-├── cache.py           # SQLite-backed result cache with TTL
-├── Dockerfile         # Non-root user, curl for HEALTHCHECK
-└── requirements.txt   # Minimal dependencies
+mcp_servers/
+├── shared/
+│   ├── auth.py            # JWT Bearer token validation decorator
+│   └── cache.py           # SQLite-backed result cache with TTL
+├── web_search/
+│   ├── server.py          # Tool registration + health endpoint
+│   ├── Dockerfile         # Non-root user, curl for HEALTHCHECK
+│   └── requirements.txt   # Minimal dependencies
+├── arxiv/
+│   └── (same structure)
+└── github/
+    └── (same structure)
 ```
 
 ### Server Details
@@ -266,8 +273,8 @@ FastMCP server
 | Server | Port | Tool | Data Source | Cache TTL |
 |---|---|---|---|---|
 | Web Search | 8001 | `search_web` | Tavily REST API | 1 hour |
-| arXiv | 8002 | `fetch_papers` | arXiv Atom XML API | 1 hour |
-| GitHub | 8003 | `search_repos` | GitHub REST API | 1 hour |
+| arXiv | 8002 | `fetch_papers` | arXiv Atom XML API | 24 hours |
+| GitHub | 8003 | `search_repos` | GitHub REST API | 2 hours |
 
 ### Authentication
 
@@ -365,3 +372,7 @@ The FastAPI gateway (`api/main.py`) exposes:
 | `token` | LLM streaming chunk | `{ content: string }` |
 | `hitl_interrupt` | Graph paused before planner | `{ thread_id, query_difficulty, estimated_cost_usd }` |
 | `complete` | Writer finished, report ready | `{ run_id: string }` |
+
+### Rate Limiting
+
+The `/research/stream` endpoint is rate-limited to **5 requests per minute** per client IP using [slowapi](https://github.com/laurentS/slowapi). Exceeding the limit returns HTTP 429.

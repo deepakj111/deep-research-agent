@@ -176,6 +176,10 @@ MCP server authentication uses HS256 JWTs:
 2. MCP servers validate via `@require_auth` decorator in `auth.py`
 3. Invalid/expired tokens return `PermissionError` which the agent catches gracefully
 
+### Frontend Authentication
+
+The Streamlit frontend is protected by a password gate configured via the `FRONTEND_PASSWORD` environment variable. When set, users must enter the password before accessing the UI. This is implemented in `app/components/auth.py` and prevents unauthorized access during public deployment.
+
 ### PII Filtering (`agent/middleware/pii_filter.py`)
 
 All MCP tool outputs are scrubbed for personally identifiable information before entering the agent state:
@@ -356,5 +360,5 @@ uv run uvicorn api.main:app --host 0.0.0.0 --port 8080 --reload
 | `make lint` | `ruff check . && ruff format --check . && mypy ...` | All linters |
 | `make security` | `uv audit && bandit` | Security scans |
 | `make build` | `docker compose build` | Build images only |
-| `make docker-test` | Build + health check all services + teardown | Docker smoke test |
+| `make docker-test` | Build + health check MCP servers + teardown | MCP container smoke test |
 | `make clean` | `docker compose down -v` + cleanup | Remove containers + caches |
