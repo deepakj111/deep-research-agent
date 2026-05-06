@@ -54,6 +54,11 @@ class EvalScores(BaseModel):
         le=5,
         description="In-text citations link to sources that were actually fetched.",
     )
+    hallucination_check: float = Field(
+        ge=0,
+        le=5,
+        description="Are there any claims or citations that are fabricated and not present in the retrieved source list? 5 = no hallucination.",
+    )
     coherence: float = Field(
         ge=0,
         le=5,
@@ -66,15 +71,16 @@ class EvalScores(BaseModel):
 
     @property
     def normalized_average(self) -> float:
-        """Mean score normalized to [0, 1] (divides by max possible score of 25)."""
+        """Mean score normalized to [0, 1] (divides by max possible score of 30)."""
         total = (
             self.faithfulness
             + self.answer_relevancy
             + self.source_coverage
             + self.citation_accuracy
+            + self.hallucination_check
             + self.coherence
         )
-        return round(total / 25.0, 4)
+        return round(total / 30.0, 4)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +88,7 @@ class EvalScores(BaseModel):
             "answer_relevancy": self.answer_relevancy,
             "source_coverage": self.source_coverage,
             "citation_accuracy": self.citation_accuracy,
+            "hallucination_check": self.hallucination_check,
             "coherence": self.coherence,
             "overall_notes": self.overall_notes,
             "normalized_average": self.normalized_average,
@@ -126,6 +133,11 @@ dimensions. Be strict — a 5 requires near-perfection. Output JSON only.
   5 = All citations verified against the source list above.
   0 = Citations are fabricated, missing, or link to unfetched pages.
 
+**hallucination_check**
+  Are there any claims or citations that are fabricated and not present in the retrieved source list?
+  5 = No hallucinated claims or citations.
+  0 = Severe hallucination detected.
+
 **coherence**
   Is the report logically structured, non-repetitive, and well-written?
   5 = Professional quality, flows naturally, clear section hierarchy.
@@ -137,6 +149,7 @@ Output only a JSON object matching this schema — no prose outside the JSON:
   "answer_relevancy": <float>,
   "source_coverage": <float>,
   "citation_accuracy": <float>,
+  "hallucination_check": <float>,
   "coherence": <float>,
   "overall_notes": "<string>"
 }}

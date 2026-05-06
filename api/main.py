@@ -19,6 +19,7 @@ import json
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from typing import cast
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -42,10 +43,19 @@ setup_logging()
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Graceful shutdown: close tracer SQLite connection
+    get_tracer().close()
+
+
 app = FastAPI(
     title="DeepResearch Agent API",
     version="1.0.0",
     description="Autonomous multi-source research agent powered by LangGraph and MCP servers.",
+    lifespan=lifespan,
 )
 
 

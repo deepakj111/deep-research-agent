@@ -95,6 +95,7 @@ class TestEvalScoresModel:
             answer_relevancy=5.0,
             source_coverage=5.0,
             citation_accuracy=5.0,
+            hallucination_check=5.0,
             coherence=5.0,
         )
         assert scores.normalized_average == pytest.approx(1.0)
@@ -105,6 +106,7 @@ class TestEvalScoresModel:
             answer_relevancy=0.0,
             source_coverage=0.0,
             citation_accuracy=0.0,
+            hallucination_check=0.0,
             coherence=0.0,
         )
         assert scores.normalized_average == pytest.approx(0.0)
@@ -115,10 +117,11 @@ class TestEvalScoresModel:
             answer_relevancy=3.5,
             source_coverage=4.0,
             citation_accuracy=2.5,
+            hallucination_check=3.5,
             coherence=3.5,
         )
-        # (3.0+3.5+4.0+2.5+3.5) / 25 = 16.5 / 25 = 0.66
-        assert scores.normalized_average == pytest.approx(0.66)
+        # (3.0+3.5+4.0+2.5+3.5+3.5) / 30 = 20.0 / 30 = 0.6667
+        assert scores.normalized_average == pytest.approx(0.6667)
 
     def test_to_dict_contains_all_keys(self) -> None:
         scores = EvalScores(
@@ -126,6 +129,7 @@ class TestEvalScoresModel:
             answer_relevancy=4.0,
             source_coverage=4.0,
             citation_accuracy=4.0,
+            hallucination_check=4.0,
             coherence=4.0,
             overall_notes="Good report",
         )
@@ -135,6 +139,7 @@ class TestEvalScoresModel:
             "answer_relevancy",
             "source_coverage",
             "citation_accuracy",
+            "hallucination_check",
             "coherence",
             "overall_notes",
             "normalized_average",
@@ -150,6 +155,7 @@ class TestEvalScoresModel:
                 answer_relevancy=3.0,
                 source_coverage=3.0,
                 citation_accuracy=3.0,
+                hallucination_check=3.0,
                 coherence=3.0,
             )
 
@@ -219,6 +225,7 @@ class TestEvaluateReport:
             answer_relevancy=4.0,
             source_coverage=5.0,
             citation_accuracy=4.2,
+            hallucination_check=4.5,
             coherence=4.8,
             overall_notes="Strong research with good source diversity.",
         )
@@ -231,7 +238,9 @@ class TestEvaluateReport:
 
         assert isinstance(result, EvalScores)
         assert result.faithfulness == pytest.approx(4.5)
-        assert result.normalized_average == pytest.approx((4.5 + 4.0 + 5.0 + 4.2 + 4.8) / 25.0)
+        assert result.normalized_average == pytest.approx(
+            (4.5 + 4.0 + 5.0 + 4.2 + 4.5 + 4.8) / 30.0
+        )
 
     @pytest.mark.asyncio
     async def test_propagates_llm_errors(self, sample_report: ReportOutput) -> None:

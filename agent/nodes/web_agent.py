@@ -1,4 +1,4 @@
-# agent/nodes/web_agent.py
+import asyncio
 import contextlib
 import time
 
@@ -12,6 +12,9 @@ from config.profiles import load_profile
 from config.settings import settings
 from observability.tracer import ToolCallRecord, get_tracer
 from utils.auth import get_jwt_token
+
+# Limit concurrent web search MCP calls across all parallel agents
+_semaphore = asyncio.Semaphore(3)
 
 
 async def run(state: ResearchState) -> dict:
@@ -29,15 +32,18 @@ async def run(state: ResearchState) -> dict:
     success = True
 
     try:
-        async with MultiServerMCPClient(
-            {
-                "web_search": {
-                    "url": settings.web_search_mcp_url,
-                    "transport": "sse",
-                    "headers": {"Authorization": f"Bearer {get_jwt_token()}"},
+        async with (
+            _semaphore,
+            MultiServerMCPClient(
+                {
+                    "web_search": {
+                        "url": settings.web_search_mcp_url,
+                        "transport": "sse",
+                        "headers": {"Authorization": f"Bearer {get_jwt_token()}"},
+                    }
                 }
-            }
-        ) as client:  # type: ignore[misc]
+            ) as client,
+        ):  # type: ignore[misc]
             tools = await client.get_tools()
             search_tool = next(t for t in tools if t.name == "search_web")
 

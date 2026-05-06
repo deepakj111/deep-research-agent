@@ -108,6 +108,12 @@ class ResearchTracer:
             self._conn.executescript(_INLINE_SCHEMA)
         self._conn.commit()
 
+    def close(self) -> None:
+        """Gracefully close the underlying SQLite connection."""
+        if self._conn:
+            self._conn.commit()
+            self._conn.close()
+
     # ── Synchronous write helpers (dispatched via asyncio.to_thread) ──────────
 
     def _start_run_sync(self, record: RunRecord) -> None:
