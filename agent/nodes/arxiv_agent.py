@@ -34,7 +34,7 @@ async def run(state: ResearchState) -> dict:
     try:
         async with (
             _semaphore,
-            MultiServerMCPClient(
+            MultiServerMCPClient(  # type: ignore[misc]
                 {
                     "arxiv": {
                         "url": settings.arxiv_mcp_url,
