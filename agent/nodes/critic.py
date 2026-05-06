@@ -1,4 +1,5 @@
 # agent/nodes/critic.py
+import asyncio
 import functools
 from pathlib import Path
 
@@ -7,6 +8,9 @@ from langchain.chat_models import init_chat_model
 
 from agent.state import CritiqueOutput, ResearchState, RunMetadata
 from config.settings import settings
+from utils.callbacks import TokenCostCallback
+
+_LLM_TIMEOUT_SECONDS = 60.0
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -57,17 +61,22 @@ async def run(state: ResearchState) -> dict:
     meta = state.get("run_metadata")
     iteration_count = meta.iteration_count if meta else 0
 
-    critique: CritiqueOutput = await _get_llm().ainvoke(  # type: ignore[assignment]
-        CRITIC_PROMPT.format(
-            query=state["query"],
-            subquestions=state.get("subquestions", []),
-            web_count=sum(len(f.web_results) for f in all_findings),
-            paper_count=sum(len(f.papers) for f in all_findings),
-            repo_count=sum(len(f.repos) for f in all_findings),
-            errors=[e for f in all_findings for e in f.tool_errors],
-            iteration=iteration_count,
-            max_iterations=settings.max_iterations,
-        )
+    cb = TokenCostCallback()
+    critique: CritiqueOutput = await asyncio.wait_for(  # type: ignore[assignment]
+        _get_llm().ainvoke(
+            CRITIC_PROMPT.format(
+                query=state["query"],
+                subquestions=state.get("subquestions", []),
+                web_count=sum(len(f.web_results) for f in all_findings),
+                paper_count=sum(len(f.papers) for f in all_findings),
+                repo_count=sum(len(f.repos) for f in all_findings),
+                errors=[e for f in all_findings for e in f.tool_errors],
+                iteration=iteration_count,
+                max_iterations=settings.max_iterations,
+            ),
+            config={"callbacks": [cb]},
+        ),
+        timeout=_LLM_TIMEOUT_SECONDS,
     )
 
     # Build a new RunMetadata with incremented iteration_count.
@@ -80,6 +89,9 @@ async def run(state: ResearchState) -> dict:
         ),
     )
     updated_meta.iteration_count = iteration_count + 1
+    updated_meta.total_input_tokens += cb.total_input_tokens
+    updated_meta.total_output_tokens += cb.total_output_tokens
+    updated_meta.estimated_cost_usd += cb.total_cost_usd
 
     return {
         "critique": critique,

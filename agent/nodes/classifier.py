@@ -1,3 +1,4 @@
+import asyncio
 import functools
 from typing import Literal
 
@@ -7,6 +8,11 @@ from pydantic import BaseModel
 from agent.middleware.input_sanitizer import sanitize_query
 from agent.state import ResearchState
 from config.settings import settings
+from utils.callbacks import TokenCostCallback
+
+# Default timeout for LLM calls (seconds). Prevents hangs when the
+# upstream provider is slow or unresponsive.
+_LLM_TIMEOUT_SECONDS = 60.0
 
 
 class ClassifierOutput(BaseModel):
@@ -46,9 +52,21 @@ async def run(state: ResearchState) -> dict:
             f"pattern(s): {sanitized.detection_counts}. Query sanitized before classification."
         )
 
-    result: ClassifierOutput = await _get_llm().ainvoke(  # type: ignore[assignment]
-        CLASSIFIER_PROMPT.format(query=query)
+    cb = TokenCostCallback()
+    result: ClassifierOutput = await asyncio.wait_for(  # type: ignore[assignment]
+        _get_llm().ainvoke(
+            CLASSIFIER_PROMPT.format(query=query),
+            config={"callbacks": [cb]},
+        ),
+        timeout=_LLM_TIMEOUT_SECONDS,
     )
+
+    # ── Update run metadata with cost ─────────────────────────────────────
+    meta = state.get("run_metadata")
+    if meta:
+        meta.total_input_tokens += cb.total_input_tokens
+        meta.total_output_tokens += cb.total_output_tokens
+        meta.estimated_cost_usd += cb.total_cost_usd
 
     thought_entries.append(
         f"[Classifier] Query classified as '{result.difficulty}'. "
@@ -59,5 +77,6 @@ async def run(state: ResearchState) -> dict:
     return {
         "query": query,  # propagate sanitized query to all downstream nodes
         "query_difficulty": result.difficulty,
+        "run_metadata": meta,
         "thought_log": thought_entries,
     }

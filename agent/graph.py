@@ -1,7 +1,9 @@
 # agent/graph.py
 from __future__ import annotations
 
+import atexit
 import sqlite3
+import threading
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
@@ -20,6 +22,13 @@ from agent.nodes import (
 )
 from agent.state import ResearchState
 
+# Threading lock protects the lazy singleton from double-initialization
+# when multiple threads call get_graph() concurrently (e.g. FastAPI with
+# threaded middleware or background tasks within a single worker process).
+_graph_lock = threading.Lock()
+_graph = None
+_checkpoint_conn: sqlite3.Connection | None = None
+
 
 def _build_graph():
     """Construct and compile the LangGraph research agent graph.
@@ -28,6 +37,8 @@ def _build_graph():
     Keeps the SQLite checkpoint connection out of module-level scope so it is
     only opened on first use — not at import time.
     """
+    global _checkpoint_conn
+
     workflow = StateGraph(ResearchState)
 
     workflow.add_node("classifier", classifier.run)
@@ -66,9 +77,13 @@ def _build_graph():
     workflow.add_edge("synthesizer", "writer")
     workflow.add_edge("writer", END)
 
-    # SqliteSaver persists state across process restarts — required for HITL resume
-    conn = sqlite3.connect(".checkpoints.db", check_same_thread=False)
-    memory = SqliteSaver(conn)
+    # SqliteSaver persists state across process restarts — required for HITL resume.
+    # WAL mode enables concurrent readers without blocking writers, which is
+    # essential when SSE streams read state while the graph is still writing.
+    _checkpoint_conn = sqlite3.connect(".checkpoints.db", check_same_thread=False)
+    _checkpoint_conn.execute("PRAGMA journal_mode=WAL")
+    _checkpoint_conn.execute("PRAGMA synchronous=NORMAL")
+    memory = SqliteSaver(_checkpoint_conn)
 
     return workflow.compile(
         checkpointer=memory,
@@ -76,15 +91,28 @@ def _build_graph():
     )
 
 
-_graph = None
+def _cleanup() -> None:
+    """Close the checkpoint SQLite connection on process exit."""
+    global _checkpoint_conn
+    if _checkpoint_conn is not None:
+        _checkpoint_conn.close()
+        _checkpoint_conn = None
+
+
+atexit.register(_cleanup)
 
 
 def get_graph():
-    """Return the compiled research agent graph (lazy singleton)."""
+    """Return the compiled research agent graph (thread-safe lazy singleton)."""
     global _graph
-    if _graph is None:
-        _graph = _build_graph()
-    return _graph
+    if _graph is not None:
+        return _graph
+    with _graph_lock:
+        # Double-check after acquiring the lock — another thread may have
+        # initialized the graph while we were waiting.
+        if _graph is None:
+            _graph = _build_graph()
+        return _graph
 
 
 # Backward-compatible module-level alias so existing `from agent.graph import graph`

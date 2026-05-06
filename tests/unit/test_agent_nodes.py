@@ -281,7 +281,7 @@ class TestSynthesizerEdgeCases:
 
         call_count = 0
 
-        async def _gpt_fails_claude_succeeds(llm, prompt):
+        async def _gpt_fails_claude_succeeds(llm, prompt, callbacks=None):
             nonlocal call_count
             call_count += 1
             if call_count == 1:

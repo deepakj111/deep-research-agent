@@ -1,3 +1,4 @@
+import asyncio
 import functools
 from pathlib import Path
 
@@ -9,6 +10,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from agent.state import ResearchState
 from config.profiles import load_profile
 from config.settings import settings
+from utils.callbacks import TokenCostCallback
+
+_LLM_TIMEOUT_SECONDS = 90.0  # planner gets more time due to tenacity retries
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -56,8 +60,8 @@ STRATEGIES = {
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-async def _invoke_planner_llm(llm, messages):
-    return await llm.ainvoke(messages)
+async def _invoke_planner_llm(llm, messages, callbacks=None):
+    return await llm.ainvoke(messages, config={"callbacks": callbacks or []})
 
 
 async def run(state: ResearchState) -> dict:
@@ -97,16 +101,28 @@ async def run(state: ResearchState) -> dict:
         )
 
     llm = _get_planner_llm()
-    result: PlanOutput = await _invoke_planner_llm(
-        llm,
-        [  # type: ignore[assignment]
-            {"role": "system", "content": PLANNER_SYSTEM},
-            {"role": "user", "content": user_prompt},
-        ],
+    cb = TokenCostCallback()
+    result: PlanOutput = await asyncio.wait_for(  # type: ignore[assignment]
+        _invoke_planner_llm(
+            llm,
+            [
+                {"role": "system", "content": PLANNER_SYSTEM},
+                {"role": "user", "content": user_prompt},
+            ],
+            callbacks=[cb],
+        ),
+        timeout=_LLM_TIMEOUT_SECONDS,
     )
+
+    # ── Accumulate cost into run metadata ─────────────────────────────────
+    if meta:
+        meta.total_input_tokens += cb.total_input_tokens
+        meta.total_output_tokens += cb.total_output_tokens
+        meta.estimated_cost_usd += cb.total_cost_usd
 
     return {
         "subquestions": result.subquestions,
         "approved_plan": True,
+        "run_metadata": meta,
         "thought_log": [f"[Planner] {task_label} Reasoning: {result.reasoning}"],
     }

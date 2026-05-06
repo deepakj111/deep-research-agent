@@ -33,6 +33,7 @@ from slowapi.util import get_remote_address
 from agent.graph import graph
 from agent.state import RunMetadata
 from observability.tracer import get_tracer
+from utils.context import bind_run_id
 from utils.cost_estimator import estimate_cost
 from utils.logger import setup_logging
 from utils.report_formatter import export_to_pdf, to_html, to_markdown
@@ -233,6 +234,7 @@ async def stream_research(payload: ResearchRequest, request: Request, tracer=Dep
     The client must call POST /research/approve to resume.
     """
     run_id = str(uuid.uuid4())
+    bind_run_id(run_id)  # propagate to all downstream log records via contextvars
     thread_config: RunnableConfig = {"configurable": {"thread_id": run_id}}
 
     # Register the run in the observability DB immediately

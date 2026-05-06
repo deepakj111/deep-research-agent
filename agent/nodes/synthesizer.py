@@ -11,6 +11,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from agent.state import ContradictionRecord, ReportOutput, ResearchState
 from config.settings import settings
+from utils.callbacks import TokenCostCallback
+
+_LLM_TIMEOUT_SECONDS = 120.0  # synthesis is the most expensive call
 
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -64,18 +67,24 @@ def build_synthesis_context(findings: list[Any]) -> str:
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-async def _invoke_synth_llm(llm, prompt):
-    return await llm.ainvoke(prompt)
+async def _invoke_synth_llm(llm, prompt, callbacks=None):
+    return await llm.ainvoke(prompt, config={"callbacks": callbacks or []})
 
 
 async def run(state: ResearchState) -> dict:
     context = build_synthesis_context(state.get("findings", []))
     prompt = SYNTHESIS_PROMPT.format(query=state["query"], context=context)
 
-    results = await asyncio.gather(
-        _invoke_synth_llm(_get_gpt4o(), prompt),
-        _invoke_synth_llm(_get_claude(), prompt),
-        return_exceptions=True,
+    cb_gpt = TokenCostCallback()
+    cb_claude = TokenCostCallback()
+
+    results = await asyncio.wait_for(
+        asyncio.gather(
+            _invoke_synth_llm(_get_gpt4o(), prompt, callbacks=[cb_gpt]),
+            _invoke_synth_llm(_get_claude(), prompt, callbacks=[cb_claude]),
+            return_exceptions=True,
+        ),
+        timeout=_LLM_TIMEOUT_SECONDS,
     )
     gpt_report: ReportOutput | Exception = results[0]  # type: ignore[assignment]
     claude_report: ReportOutput | Exception = results[1]  # type: ignore[assignment]
@@ -84,6 +93,7 @@ async def run(state: ResearchState) -> dict:
     claude_failed = isinstance(claude_report, Exception)
 
     contradictions: list[ContradictionRecord] = []
+    cb_reconcile = TokenCostCallback()
 
     if gpt_failed and claude_failed:
         # Both models failed — return None so writer.py handles it gracefully
@@ -102,22 +112,35 @@ async def run(state: ResearchState) -> dict:
     elif claude_failed:
         final = gpt_report
     else:
-        reconcile: ReconcileOutput = await _invoke_synth_llm(
-            _get_reconciler(),  # type: ignore[assignment]
-            RECONCILE_PROMPT.format(
-                query=state["query"],
-                summary_a=gpt_report.executive_summary,  # type: ignore[union-attr]
-                summary_b=claude_report.executive_summary,  # type: ignore[union-attr]
+        reconcile: ReconcileOutput = await asyncio.wait_for(  # type: ignore[assignment]
+            _invoke_synth_llm(
+                _get_reconciler(),
+                RECONCILE_PROMPT.format(
+                    query=state["query"],
+                    summary_a=gpt_report.executive_summary,  # type: ignore[union-attr]
+                    summary_b=claude_report.executive_summary,  # type: ignore[union-attr]
+                ),
+                callbacks=[cb_reconcile],
             ),
+            timeout=_LLM_TIMEOUT_SECONDS,
         )
         final = gpt_report
         contradictions = reconcile.contradictions
         final.contradictions = contradictions  # type: ignore[union-attr]
         final.model_disagreements = [reconcile.summary]  # type: ignore[union-attr]
 
+    # ── Accumulate cost from all LLM calls ──────────────────────────────
+    meta = state.get("run_metadata")
+    if meta:
+        for cb in (cb_gpt, cb_claude, cb_reconcile):
+            meta.total_input_tokens += cb.total_input_tokens
+            meta.total_output_tokens += cb.total_output_tokens
+            meta.estimated_cost_usd += cb.total_cost_usd
+
     failed = sum([gpt_failed, claude_failed])
     return {
         "final_report": final,
+        "run_metadata": meta,
         "thought_log": [
             f"[Synthesizer] Used {2 - failed}/2 models. "
             f"{len(contradictions)} contradictions detected."
