@@ -12,6 +12,7 @@ Endpoints:
   GET   /research/runs             — Recent run summaries
   GET   /research/runs/{run_id}    — Full observability detail for a run
   GET   /health                    — Health check
+  GET   /health/deep               — Deep health check (DB, MCP, keys)
 """
 
 import contextlib
@@ -31,6 +32,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from agent import __version__
 from agent.graph import graph
 from agent.state import RunMetadata
 from observability.tracer import get_tracer
@@ -83,6 +85,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ─────────────────────────── Version Header ───────────────────────────────────
+
+
+@app.middleware("http")
+async def add_version_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Agent-Version"] = __version__
+    return response
 
 
 def sse(data: dict) -> str:
@@ -464,4 +476,79 @@ async def get_run_detail(run_id: str, tracer=Depends(get_tracer)):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "deep-research-agent-api"}
+    return {"status": "healthy", "service": "deep-research-agent-api", "version": __version__}
+
+
+@app.get("/health/deep")
+async def health_deep():
+    """
+    Deep health check that validates critical dependencies:
+    - SQLite checkpoint DB is accessible
+    - At least one MCP server is reachable
+    - OpenAI API key is configured
+    """
+    import os
+
+    import httpx as _httpx
+
+    checks: dict[str, dict] = {}
+
+    # 1. SQLite checkpoint DB
+    try:
+        tracer = get_tracer()
+        tracer.get_recent_runs(limit=1)
+        checks["sqlite_tracer"] = {"status": "ok"}
+    except Exception as exc:
+        checks["sqlite_tracer"] = {"status": "error", "detail": str(exc)[:200]}
+
+    # 2. MCP server reachability (check all three, pass if >= 1 is up)
+    mcp_endpoints = {
+        "web_search": "http://web-search-mcp:8001/health",
+        "arxiv": "http://arxiv-mcp:8002/health",
+        "github": "http://github-mcp:8003/health",
+    }
+    mcp_results: dict[str, str] = {}
+    mcp_up = 0
+    async with _httpx.AsyncClient(timeout=5.0) as client:
+        for name, url in mcp_endpoints.items():
+            try:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    mcp_results[name] = "ok"
+                    mcp_up += 1
+                else:
+                    mcp_results[name] = f"http_{resp.status_code}"
+            except Exception:
+                mcp_results[name] = "unreachable"
+    checks["mcp_servers"] = {
+        "status": "ok" if mcp_up > 0 else "error",
+        "reachable": mcp_up,
+        "total": len(mcp_endpoints),
+        "details": mcp_results,
+    }
+
+    # 3. API key configuration
+    keys_configured = {
+        "OPENAI_API_KEY": bool(os.environ.get("OPENAI_API_KEY")),
+        "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "TAVILY_API_KEY": bool(os.environ.get("TAVILY_API_KEY")),
+    }
+    all_keys_set = all(keys_configured.values())
+    checks["api_keys"] = {
+        "status": "ok" if all_keys_set else "warning",
+        "configured": keys_configured,
+    }
+
+    overall = (
+        "healthy" if all(c["status"] in ("ok", "warning") for c in checks.values()) else "degraded"
+    )
+
+    status_code = 200 if overall == "healthy" else 503
+    return Response(
+        content=json.dumps(
+            {"status": overall, "version": __version__, "checks": checks},
+            indent=2,
+        ),
+        media_type="application/json",
+        status_code=status_code,
+    )

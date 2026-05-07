@@ -23,7 +23,9 @@ class ClassifierOutput(BaseModel):
 
 @functools.lru_cache(maxsize=1)
 def _get_llm():
-    return init_chat_model(settings.default_model).with_structured_output(ClassifierOutput)
+    return init_chat_model(
+        settings.default_model, temperature=settings.classifier_temperature
+    ).with_structured_output(ClassifierOutput)
 
 
 CLASSIFIER_PROMPT = """Classify this research query:

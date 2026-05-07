@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     default_model: str = "gpt-4o"
     secondary_model: str = "claude-sonnet-4-5"
 
+    # Per-node temperature overrides
+    classifier_temperature: float = 0.0  # deterministic classification
+    planner_temperature: float = 0.2  # slight creativity in decomposition
+    synthesis_temperature: float = 0.3  # creative synthesis
+    critic_temperature: float = 0.0  # deterministic evaluation
+
     # MCP Server URLs
     web_search_mcp_url: str = "http://localhost:8001/sse"
     arxiv_mcp_url: str = "http://localhost:8002/sse"

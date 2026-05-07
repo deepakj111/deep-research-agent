@@ -22,7 +22,9 @@ CRITIC_PROMPT = _prompts["evaluation_prompt"]
 
 @functools.lru_cache(maxsize=1)
 def _get_llm():
-    return init_chat_model(settings.default_model).with_structured_output(CritiqueOutput)
+    return init_chat_model(
+        settings.default_model, temperature=settings.critic_temperature
+    ).with_structured_output(CritiqueOutput)
 
 
 def score_source_trust(source: dict, source_type: str) -> float:

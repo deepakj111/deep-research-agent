@@ -9,7 +9,9 @@ Flow:
 3. Events stream into three columns: thought log, report, and metrics.
 4. If the agent hits the HITL interrupt, the UI shows the proposed plan
    and allows the user to approve, edit, or reject before continuing.
-5. On completion, the full report renders with download buttons (MD + PDF)
+5. On approval, a new SSE stream is opened to consume the resume events
+   with the same live UI updates as the initial stream.
+6. On completion, the full report renders with download buttons (MD + PDF)
    and an interactive source relationship graph.
 """
 
@@ -31,6 +33,12 @@ from app.components.theme import hero_header, inject_theme, metric_card
 # ────────────────────────── Config ────────────────────────────────────────────
 
 AGENT_API_URL = os.environ.get("AGENT_API_URL", "http://localhost:8080")
+
+# Rough per-token costs for live estimation (GPT-4o pricing)
+_INPUT_COST_PER_TOKEN = 2.50 / 1_000_000
+_OUTPUT_COST_PER_TOKEN = 10.00 / 1_000_000
+# Average tokens per streamed chunk (empirical estimate for GPT-4o)
+_AVG_TOKENS_PER_CHUNK = 1.3
 
 st.set_page_config(page_title="Research | DeepResearch", page_icon="🔬", layout="wide")
 inject_theme()
@@ -102,6 +110,99 @@ def _format_thought(event: dict) -> str | None:
     return None
 
 
+# ────────────────────────── Shared Stream Processing ──────────────────────────
+
+
+def _process_sse_stream(
+    response_lines,
+    *,
+    log_col,
+    report_col,
+    meta_col,
+    log_placeholder,
+    report_placeholder,
+    metrics_placeholder,
+    thought_log: list[str],
+    accumulated_report: str,
+    run_id: str,
+    node_count: int,
+    tool_count: int,
+    source_count: int,
+    token_count: int,
+    start_time: float,
+    profile_name: str,
+) -> tuple[str, str, int, int, int, int, bool]:
+    """
+    Process an SSE line iterator and update the Streamlit UI in real time.
+
+    Returns:
+        (run_id, accumulated_report, node_count, tool_count, source_count,
+         token_count, writer_completed)
+    """
+    writer_completed = False
+
+    for line in response_lines:
+        event = _parse_sse_line(line)
+        if event is None:
+            continue
+
+        etype = event.get("type", "")
+
+        # Format thought log entry
+        thought = _format_thought(event)
+        if thought:
+            thought_log.append(thought)
+            with log_col:
+                log_placeholder.markdown(
+                    '<div class="thought-log">' + "<br>".join(thought_log[-30:]) + "</div>",
+                    unsafe_allow_html=True,
+                )
+
+        # Token streaming for report
+        if etype == "token":
+            content = event.get("content", "")
+            accumulated_report += content
+            token_count += max(1, int(len(content) * _AVG_TOKENS_PER_CHUNK))
+            with report_col:
+                report_placeholder.markdown(accumulated_report + "▌")
+
+        # Track metrics
+        if etype == "node_start":
+            node_count += 1
+        elif etype == "tool_call":
+            tool_count += 1
+        elif etype == "tool_result":
+            source_count += event.get("count", 0)
+
+        # Completion
+        elif etype == "complete":
+            run_id = event.get("run_id", run_id)
+            writer_completed = True
+
+        # Update metrics sidebar (live cost estimation)
+        elapsed = time.perf_counter() - start_time
+        est_cost = token_count * _OUTPUT_COST_PER_TOKEN
+        with meta_col, metrics_placeholder.container():
+            metric_card("Run ID", run_id[:8] + "..." if run_id else "—")
+            metric_card("Profile", profile_name.upper())
+            metric_card("Nodes Executed", str(node_count))
+            metric_card("Tool Calls", str(tool_count))
+            metric_card("Sources Found", str(source_count))
+            metric_card("Tokens Streamed", f"{token_count:,}")
+            metric_card("Est. Cost", f"${est_cost:.4f}")
+            metric_card("Elapsed", f"{elapsed:.1f}s")
+
+    return (
+        run_id,
+        accumulated_report,
+        node_count,
+        tool_count,
+        source_count,
+        token_count,
+        writer_completed,
+    )
+
+
 # ────────────────────────── HITL Interrupt Flow ───────────────────────────────
 
 
@@ -111,11 +212,36 @@ def _handle_hitl_interrupt(event: dict) -> None:
     st.session_state["hitl_pending"] = True
 
 
-def _render_hitl_panel() -> None:
-    """Render the HITL approval panel when the agent is paused."""
+def _render_hitl_panel(
+    *,
+    log_col,
+    report_col,
+    meta_col,
+    log_placeholder,
+    report_placeholder,
+    metrics_placeholder,
+    thought_log: list[str],
+    accumulated_report: str,
+    run_id: str,
+    node_count: int,
+    tool_count: int,
+    source_count: int,
+    token_count: int,
+    start_time: float,
+    profile_name: str,
+) -> tuple[str, str, int, int, int, int]:
+    """
+    Render the HITL approval panel when the agent is paused.
+
+    If the user approves, opens a new SSE stream to /research/approve
+    and processes the resume events with full live UI updates.
+
+    Returns updated (run_id, accumulated_report, node_count, tool_count,
+    source_count, token_count).
+    """
     event = st.session_state.get("hitl_event", {})
     if not event:
-        return
+        return run_id, accumulated_report, node_count, tool_count, source_count, token_count
 
     st.markdown("---")
     st.markdown(
@@ -138,34 +264,63 @@ def _render_hitl_panel() -> None:
         reject_btn = st.button("❌ Reject", use_container_width=True)
 
         if approve_btn:
-            _resume_research(thread_id, approved=True)
+            st.session_state["hitl_pending"] = False
+            thought_log.append("▶️ **Plan approved** — resuming research...")
+            with log_col:
+                log_placeholder.markdown(
+                    '<div class="thought-log">' + "<br>".join(thought_log[-30:]) + "</div>",
+                    unsafe_allow_html=True,
+                )
+
+            try:
+                with (
+                    httpx.Client(timeout=httpx.Timeout(300.0, connect=10.0)) as client,
+                    client.stream(
+                        "POST",
+                        f"{AGENT_API_URL}/research/approve",
+                        json={"thread_id": thread_id, "approved": True},
+                    ) as response,
+                ):
+                    (
+                        run_id,
+                        accumulated_report,
+                        node_count,
+                        tool_count,
+                        source_count,
+                        token_count,
+                        _,
+                    ) = _process_sse_stream(
+                        response.iter_lines(),
+                        log_col=log_col,
+                        report_col=report_col,
+                        meta_col=meta_col,
+                        log_placeholder=log_placeholder,
+                        report_placeholder=report_placeholder,
+                        metrics_placeholder=metrics_placeholder,
+                        thought_log=thought_log,
+                        accumulated_report=accumulated_report,
+                        run_id=run_id,
+                        node_count=node_count,
+                        tool_count=tool_count,
+                        source_count=source_count,
+                        token_count=token_count,
+                        start_time=start_time,
+                        profile_name=profile_name,
+                    )
+            except Exception as e:
+                st.error(f"Failed to resume: {e}")
+
         if reject_btn:
-            _resume_research(thread_id, approved=False)
-
-
-def _resume_research(thread_id: str, approved: bool) -> None:
-    """Send the approval/rejection to the API and resume streaming."""
-    st.session_state["hitl_pending"] = False
-
-    try:
-        resp = httpx.post(
-            f"{AGENT_API_URL}/research/approve",
-            json={"thread_id": thread_id, "approved": approved},
-            timeout=10.0,
-        )
-        if not approved:
+            st.session_state["hitl_pending"] = False
+            with contextlib.suppress(Exception):
+                httpx.post(
+                    f"{AGENT_API_URL}/research/approve",
+                    json={"thread_id": thread_id, "approved": False},
+                    timeout=10.0,
+                )
             st.warning("Research plan rejected.")
-            return
 
-        if resp.status_code == 200 and "text/event-stream" in resp.headers.get("content-type", ""):
-            st.info("Resuming research after approval...")
-            # For now we note the resume — full re-stream would require
-            # another SSE connection which is complex in Streamlit.
-            st.success(f"✅ Plan approved. Research resuming on thread `{thread_id}`.")
-        else:
-            st.success(f"✅ Plan approved. Thread `{thread_id}` is resuming.")
-    except Exception as e:
-        st.error(f"Failed to resume: {e}")
+    return run_id, accumulated_report, node_count, tool_count, source_count, token_count
 
 
 # ────────────────────────── Research Execution ────────────────────────────────
@@ -193,6 +348,7 @@ if submit and query:
     node_count = 0
     tool_count = 0
     source_count = 0
+    token_count = 0
     start_time = time.perf_counter()
     hitl_occurred = False
     findings_raw = None
@@ -213,7 +369,13 @@ if submit and query:
 
                 etype = event.get("type", "")
 
-                # Format thought log entry
+                # HITL interrupt — break out to render approval panel
+                if etype == "hitl_interrupt":
+                    hitl_occurred = True
+                    _handle_hitl_interrupt(event)
+                    continue
+
+                # Process all other events through shared handler
                 thought = _format_thought(event)
                 if thought:
                     thought_log.append(thought)
@@ -223,37 +385,33 @@ if submit and query:
                             unsafe_allow_html=True,
                         )
 
-                # Token streaming for report
                 if etype == "token":
-                    accumulated_report += event.get("content", "")
+                    content = event.get("content", "")
+                    accumulated_report += content
+                    token_count += max(1, int(len(content) * _AVG_TOKENS_PER_CHUNK))
                     with report_col:
                         report_placeholder.markdown(accumulated_report + "▌")
 
-                # Track metrics
                 if etype == "node_start":
                     node_count += 1
                 elif etype == "tool_call":
                     tool_count += 1
                 elif etype == "tool_result":
                     source_count += event.get("count", 0)
-
-                # HITL interrupt
-                elif etype == "hitl_interrupt":
-                    hitl_occurred = True
-                    _handle_hitl_interrupt(event)
-
-                # Completion
                 elif etype == "complete":
                     run_id = event.get("run_id", "")
 
-                # Update metrics sidebar
+                # Update metrics sidebar with live token/cost
                 elapsed = time.perf_counter() - start_time
+                est_cost = token_count * _OUTPUT_COST_PER_TOKEN
                 with meta_col, metrics_placeholder.container():
                     metric_card("Run ID", run_id[:8] + "..." if run_id else "—")
                     metric_card("Profile", profile.upper())
                     metric_card("Nodes Executed", str(node_count))
                     metric_card("Tool Calls", str(tool_count))
                     metric_card("Sources Found", str(source_count))
+                    metric_card("Tokens Streamed", f"{token_count:,}")
+                    metric_card("Est. Cost", f"${est_cost:.4f}")
                     metric_card("Elapsed", f"{elapsed:.1f}s")
 
     except httpx.ConnectError:
@@ -270,8 +428,27 @@ if submit and query:
         with report_col:
             report_placeholder.markdown(accumulated_report)
 
+    # HITL panel — if triggered, render approval UI that opens a resume stream
     if hitl_occurred and st.session_state.get("hitl_pending"):
-        _render_hitl_panel()
+        run_id, accumulated_report, node_count, tool_count, source_count, token_count = (
+            _render_hitl_panel(
+                log_col=log_col,
+                report_col=report_col,
+                meta_col=meta_col,
+                log_placeholder=log_placeholder,
+                report_placeholder=report_placeholder,
+                metrics_placeholder=metrics_placeholder,
+                thought_log=thought_log,
+                accumulated_report=accumulated_report,
+                run_id=run_id,
+                node_count=node_count,
+                tool_count=tool_count,
+                source_count=source_count,
+                token_count=token_count,
+                start_time=start_time,
+                profile_name=profile,
+            )
+        )
 
     pdf_content = None
     if run_id:

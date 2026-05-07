@@ -31,17 +31,23 @@ class ReconcileOutput(BaseModel):
 
 @functools.lru_cache(maxsize=1)
 def _get_gpt4o():
-    return init_chat_model(settings.default_model).with_structured_output(ReportOutput)
+    return init_chat_model(
+        settings.default_model, temperature=settings.synthesis_temperature
+    ).with_structured_output(ReportOutput)
 
 
 @functools.lru_cache(maxsize=1)
 def _get_claude():
-    return init_chat_model(settings.secondary_model).with_structured_output(ReportOutput)  # type: ignore[call-arg]
+    return init_chat_model(
+        settings.secondary_model, temperature=settings.synthesis_temperature
+    ).with_structured_output(ReportOutput)  # type: ignore[call-arg]
 
 
 @functools.lru_cache(maxsize=1)
 def _get_reconciler():
-    return init_chat_model(settings.default_model).with_structured_output(ReconcileOutput)
+    return init_chat_model(
+        settings.default_model, temperature=settings.synthesis_temperature
+    ).with_structured_output(ReconcileOutput)
 
 
 def build_synthesis_context(findings: list[Any]) -> str:

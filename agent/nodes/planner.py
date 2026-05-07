@@ -30,7 +30,9 @@ class PlanOutput(BaseModel):
 
 @functools.lru_cache(maxsize=1)
 def _get_planner_llm():
-    return init_chat_model(settings.default_model).with_structured_output(PlanOutput)
+    return init_chat_model(
+        settings.default_model, temperature=settings.planner_temperature
+    ).with_structured_output(PlanOutput)
 
 
 NUM_QUESTIONS = {

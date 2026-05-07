@@ -163,6 +163,18 @@ async def run(state: ResearchState) -> dict:
     )
     report.key_findings = verified_findings
 
+    # ── Deduplicate inline citations within each finding ──────────────────
+    # The synthesizer LLM may cite the same URL multiple times across findings.
+    # We deduplicate by source_url within each finding's citations list.
+    for finding in report.key_findings:
+        seen: set[str] = set()
+        deduped: list[Citation] = []
+        for c in finding.citations:
+            if c.source_url not in seen:
+                seen.add(c.source_url)
+                deduped.append(c)
+        finding.citations = deduped
+
     thought_entries = [
         f"[Writer] Report finalized. "
         f"{len(citations)} unique citations attached. "
