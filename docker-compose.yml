@@ -1,6 +1,8 @@
 services:
   web-search-mcp:
-    build: ./mcp_servers/web_search
+    build:
+      context: ./mcp_servers
+      dockerfile: web_search/Dockerfile
     ports:
       - "8001:8001"
     environment:
@@ -18,7 +20,9 @@ services:
           memory: 256M
 
   arxiv-mcp:
-    build: ./mcp_servers/arxiv
+    build:
+      context: ./mcp_servers
+      dockerfile: arxiv/Dockerfile
     ports:
       - "8002:8002"
     environment:
@@ -35,7 +39,9 @@ services:
           memory: 256M
 
   github-mcp:
-    build: ./mcp_servers/github
+    build:
+      context: ./mcp_servers
+      dockerfile: github/Dockerfile
     ports:
       - "8003:8003"
     environment:

@@ -10,10 +10,12 @@ RUN useradd --create-home --shell /bin/bash appuser
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY web_search/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY web_search/ ./web_search/
+COPY shared/ ./shared/
+WORKDIR /app/web_search
 
 # Cache DB will live inside the container (ephemeral) or on a volume
 RUN chown -R appuser:appuser /app

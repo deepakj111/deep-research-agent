@@ -10,10 +10,12 @@ RUN useradd --create-home --shell /bin/bash appuser
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY arxiv/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY arxiv/ ./arxiv/
+COPY shared/ ./shared/
+WORKDIR /app/arxiv
 
 RUN chown -R appuser:appuser /app
 

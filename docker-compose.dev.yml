@@ -4,19 +4,22 @@
 services:
   web-search-mcp:
     volumes:
-      - ./mcp_servers/web_search:/app
+      - ./mcp_servers:/app
+    working_dir: /app/web_search
     environment:
       - WATCHFILES_FORCE_POLLING=true
 
   arxiv-mcp:
     volumes:
-      - ./mcp_servers/arxiv:/app
+      - ./mcp_servers:/app
+    working_dir: /app/arxiv
     environment:
       - WATCHFILES_FORCE_POLLING=true
 
   github-mcp:
     volumes:
-      - ./mcp_servers/github:/app
+      - ./mcp_servers:/app
+    working_dir: /app/github
     environment:
       - WATCHFILES_FORCE_POLLING=true
 

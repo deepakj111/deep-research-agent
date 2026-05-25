@@ -10,10 +10,12 @@ RUN useradd --create-home --shell /bin/bash appuser
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY github/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY github/ ./github/
+COPY shared/ ./shared/
+WORKDIR /app/github
 
 RUN chown -R appuser:appuser /app
 
