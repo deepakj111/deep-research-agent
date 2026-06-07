@@ -19,6 +19,7 @@ __pycache__/
 
 # Benchmark raw results
 evaluation/results/*.json
+evaluation/results/
 
 # Streamlit
 .streamlit/
