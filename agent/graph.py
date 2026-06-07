@@ -4,8 +4,16 @@ from __future__ import annotations
 import atexit
 import sqlite3
 import threading
+from collections.abc import AsyncIterator, Sequence
+from typing import Any
 
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import (
+    BaseCheckpointSaver,
+    Checkpoint,
+    CheckpointMetadata,
+    CheckpointTuple,
+)
 from langgraph.graph import END, StateGraph
 
 from agent.budget_guard import check_budget
@@ -30,6 +38,118 @@ _graph = None
 _checkpoint_conn: sqlite3.Connection | None = None
 
 
+class HybridSqliteSaver(BaseCheckpointSaver):
+    def __init__(self, db_path: str):
+        super().__init__()
+        self.db_path = db_path
+        self._asaver = None
+        self._aconn = None
+        self._sync_saver = None
+        self._sync_conn = None
+
+    async def _get_asaver(self):
+        if self._asaver is None:
+            import aiosqlite
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+            self._aconn = await aiosqlite.connect(self.db_path, check_same_thread=False)
+            await self._aconn.execute("PRAGMA journal_mode=WAL")
+            await self._aconn.execute("PRAGMA synchronous=NORMAL")
+            self._asaver = AsyncSqliteSaver(self._aconn)
+            await self._asaver.setup()
+        return self._asaver
+
+    async def aput(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        new_versions: Any,
+    ) -> RunnableConfig:
+        saver = await self._get_asaver()
+        return await saver.aput(config, checkpoint, metadata, new_versions)
+
+    async def aput_writes(
+        self,
+        config: RunnableConfig,
+        writes: Sequence[tuple[str, Any]],
+        task_id: str,
+        task_path: str = "",
+    ) -> None:
+        saver = await self._get_asaver()
+        return await saver.aput_writes(config, writes, task_id, task_path)
+
+    async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
+        saver = await self._get_asaver()
+        return await saver.aget_tuple(config)
+
+    async def alist(
+        self,
+        config: RunnableConfig | None,
+        *,
+        filter: dict[str, Any] | None = None,
+        before: RunnableConfig | None = None,
+        limit: int | None = None,
+    ) -> AsyncIterator[CheckpointTuple]:
+        saver = await self._get_asaver()
+        async for ct in saver.alist(config, filter=filter, before=before, limit=limit):
+            yield ct
+
+    @property
+    def sync_saver(self):
+        if self._sync_saver is None:
+            import sqlite3
+
+            from langgraph.checkpoint.sqlite import SqliteSaver
+
+            self._sync_conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._sync_conn.execute("PRAGMA journal_mode=WAL")
+            self._sync_conn.execute("PRAGMA synchronous=NORMAL")
+            self._sync_saver = SqliteSaver(self._sync_conn)
+            self._sync_saver.setup()
+        return self._sync_saver
+
+    def put(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        new_versions: Any,
+    ) -> RunnableConfig:
+        return self.sync_saver.put(config, checkpoint, metadata, new_versions)
+
+    def put_writes(
+        self,
+        config: RunnableConfig,
+        writes: Sequence[tuple[str, Any]],
+        task_id: str,
+        task_path: str = "",
+    ) -> None:
+        return self.sync_saver.put_writes(config, writes, task_id, task_path)
+
+    def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
+        return self.sync_saver.get_tuple(config)
+
+    def list(
+        self,
+        config: RunnableConfig | None,
+        *,
+        filter: dict[str, Any] | None = None,
+        before: RunnableConfig | None = None,
+        limit: int | None = None,
+    ):
+        return self.sync_saver.list(config, filter=filter, before=before, limit=limit)
+
+    def close(self):
+        if self._sync_conn:
+            self._sync_conn.close()
+            self._sync_conn = None
+        # Let async connection be garbage collected
+
+
+_hybrid_saver = None
+
+
 def _build_graph():
     """Construct and compile the LangGraph research agent graph.
 
@@ -37,7 +157,7 @@ def _build_graph():
     Keeps the SQLite checkpoint connection out of module-level scope so it is
     only opened on first use — not at import time.
     """
-    global _checkpoint_conn
+    global _hybrid_saver
 
     workflow = StateGraph(ResearchState)
 
@@ -80,23 +200,21 @@ def _build_graph():
     # SqliteSaver persists state across process restarts — required for HITL resume.
     # WAL mode enables concurrent readers without blocking writers, which is
     # essential when SSE streams read state while the graph is still writing.
-    _checkpoint_conn = sqlite3.connect(".checkpoints.db", check_same_thread=False)
-    _checkpoint_conn.execute("PRAGMA journal_mode=WAL")
-    _checkpoint_conn.execute("PRAGMA synchronous=NORMAL")
-    memory = SqliteSaver(_checkpoint_conn)
+    # HybridSqliteSaver supports both sync and async state methods.
+    _hybrid_saver = HybridSqliteSaver(".checkpoints.db")
 
     return workflow.compile(
-        checkpointer=memory,
+        checkpointer=_hybrid_saver,
         interrupt_before=["planner"],
     )
 
 
 def _cleanup() -> None:
     """Close the checkpoint SQLite connection on process exit."""
-    global _checkpoint_conn
-    if _checkpoint_conn is not None:
-        _checkpoint_conn.close()
-        _checkpoint_conn = None
+    global _hybrid_saver
+    if _hybrid_saver is not None:
+        _hybrid_saver.close()
+        _hybrid_saver = None
 
 
 atexit.register(_cleanup)
