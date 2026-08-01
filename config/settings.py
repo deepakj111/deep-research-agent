@@ -52,10 +52,12 @@ class Settings(BaseSettings):
     # Frontend UI Settings
     avg_tokens_per_char: float = 0.25
 
-    # API Server
+    # API Server & Authentication
     agent_api_url: str = "http://localhost:8080"
     agent_api_port: int = 8080
     frontend_password: str = ""
+    demo_username: str = "admin"
+    demo_password: str = "demo123"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

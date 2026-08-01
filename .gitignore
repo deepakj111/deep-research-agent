@@ -22,7 +22,9 @@ evaluation/results/*.json
 evaluation/results/
 
 # Streamlit
-.streamlit/
+.streamlit/secrets.toml
+!.streamlit/config.toml
+!.streamlit/secrets.toml.example
 
 # PDF outputs
 *.pdf
