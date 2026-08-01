@@ -7,7 +7,7 @@ name: Agent Quality Evaluation
 #   gh workflow run eval.yml -f profile=fast -f query_limit=3
 #
 # Required repository secrets:
-#   OPENAI_API_KEY, ANTHROPIC_API_KEY, TAVILY_API_KEY,
+#   OPENAI_API_KEY, TAVILY_API_KEY,
 #   GITHUB_TOKEN (already available), MCP_JWT_SECRET,
 #   LANGCHAIN_API_KEY (optional — tracing)
 
@@ -62,7 +62,6 @@ jobs:
           MCP_JWT_SECRET: ${{ secrets.MCP_JWT_SECRET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
 
       - name: Wait for all services to be healthy
@@ -86,7 +85,6 @@ jobs:
             --queries "${{ github.event.inputs.query_limit || '3' }}"
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
           LANGCHAIN_TRACING_V2: "true"
           LANGCHAIN_PROJECT: "deep-research-agent-eval"

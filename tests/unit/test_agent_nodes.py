@@ -136,11 +136,10 @@ class TestSupervisorNode:
 class TestCostEstimator:
     """Tests for the dynamic cost estimator backed by LiteLLM community pricing."""
 
-    # Deterministic test pricing data (matches real LiteLLM pricing values)
     _TEST_COST_MAP: dict = {
+        "gpt-5": {"input_cost_per_token": 1.25e-06, "output_cost_per_token": 1e-05},
+        "gpt-5-mini": {"input_cost_per_token": 2.5e-07, "output_cost_per_token": 2e-06},
         "gpt-4o": {"input_cost_per_token": 2.5e-06, "output_cost_per_token": 1e-05},
-        "gpt-4o-mini": {"input_cost_per_token": 1.5e-07, "output_cost_per_token": 6e-07},
-        "claude-sonnet-4-5": {"input_cost_per_token": 3e-06, "output_cost_per_token": 1.5e-05},
     }
 
     def setup_method(self):
@@ -155,29 +154,29 @@ class TestCostEstimator:
 
         mod._cost_map = None
 
+    def test_gpt5_cost_calculation(self):
+        from utils.cost_estimator import estimate_cost
+
+        cost = estimate_cost("gpt-5", 1_000_000, 1_000_000)
+        assert cost == 11.25
+
+    def test_gpt5_mini_cost_calculation(self):
+        from utils.cost_estimator import estimate_cost
+
+        cost = estimate_cost("gpt-5-mini", 1_000_000, 1_000_000)
+        assert cost == 2.25
+
+    def test_unknown_model_falls_back_to_gpt5_pricing(self):
+        from utils.cost_estimator import estimate_cost
+
+        cost = estimate_cost("unknown-model", 1_000_000, 0)
+        assert cost == 1.25
+
     def test_gpt4o_cost_calculation(self):
         from utils.cost_estimator import estimate_cost
 
         cost = estimate_cost("gpt-4o", 1_000_000, 1_000_000)
         assert cost == 12.50
-
-    def test_gpt4o_mini_cost_calculation(self):
-        from utils.cost_estimator import estimate_cost
-
-        cost = estimate_cost("gpt-4o-mini", 1_000_000, 1_000_000)
-        assert cost == 0.75
-
-    def test_unknown_model_falls_back_to_gpt4o_pricing(self):
-        from utils.cost_estimator import estimate_cost
-
-        cost = estimate_cost("unknown-model", 1_000_000, 0)
-        assert cost == 2.50
-
-    def test_claude_sonnet_cost_calculation(self):
-        from utils.cost_estimator import estimate_cost
-
-        cost = estimate_cost("claude-sonnet-4-5", 1_000_000, 1_000_000)
-        assert cost == 18.00
 
     def test_fetch_and_cache_populates_cost_map(self, monkeypatch):
         """Verify the fetch-and-cache mechanism works with a mocked HTTP response."""
@@ -250,8 +249,8 @@ class TestSynthesizerEdgeCases:
             raise RuntimeError("Model failed")
 
         with (
-            patch("agent.nodes.synthesizer._get_gpt4o", return_value=MagicMock()),
-            patch("agent.nodes.synthesizer._get_claude", return_value=MagicMock()),
+            patch("agent.nodes.synthesizer._get_primary", return_value=MagicMock()),
+            patch("agent.nodes.synthesizer._get_secondary", return_value=MagicMock()),
             patch("agent.nodes.synthesizer._invoke_synth_llm", side_effect=_fail),
         ):
             result = await run(base_state)
@@ -281,19 +280,19 @@ class TestSynthesizerEdgeCases:
 
         call_count = 0
 
-        async def _gpt_fails_claude_succeeds(llm, prompt, callbacks=None):
+        async def _primary_fails_secondary_succeeds(llm, prompt, callbacks=None):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise RuntimeError("GPT failed")
+                raise RuntimeError("Primary model failed")
             return fallback_report
 
         with (
-            patch("agent.nodes.synthesizer._get_gpt4o", return_value=MagicMock()),
-            patch("agent.nodes.synthesizer._get_claude", return_value=MagicMock()),
+            patch("agent.nodes.synthesizer._get_primary", return_value=MagicMock()),
+            patch("agent.nodes.synthesizer._get_secondary", return_value=MagicMock()),
             patch(
                 "agent.nodes.synthesizer._invoke_synth_llm",
-                side_effect=_gpt_fails_claude_succeeds,
+                side_effect=_primary_fails_secondary_succeeds,
             ),
         ):
             result = await run(base_state)
@@ -301,3 +300,130 @@ class TestSynthesizerEdgeCases:
             assert result["final_report"] is not None
             assert result["final_report"].title == "Fallback"
             assert "1/2" in result["thought_log"][0]
+
+
+class TestSubAgents:
+    @pytest.mark.asyncio
+    async def test_web_agent_executes_search(self, base_state):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from agent.nodes.web_agent import run
+
+        mock_tool = MagicMock()
+        mock_tool.name = "search_web"
+        mock_tool.ainvoke = AsyncMock(
+            return_value=[
+                {"url": "https://example.com", "title": "Test Title", "snippet": "Test Snippet"}
+            ]
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_tools = AsyncMock(return_value=[mock_tool])
+
+        with (
+            patch("agent.nodes.web_agent.MultiServerMCPClient", return_value=mock_client),
+            patch("agent.nodes.web_agent.get_jwt_token", return_value="fake_token"),
+        ):
+            res = await run(base_state)
+            assert len(res["findings"]) == 1
+            assert len(res["findings"][0].web_results) == 1
+            assert res["findings"][0].web_results[0].title == "Test Title"
+            assert res["findings"][0].tool_errors == []
+
+    @pytest.mark.asyncio
+    async def test_web_agent_handles_mcp_text_block_response(self, base_state):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from agent.nodes.web_agent import run
+
+        mcp_text_block = [
+            {
+                "type": "text",
+                "text": '[{"url": "https://example.com", "title": "MCP Title", "snippet": "MCP Snippet"}]',
+            }
+        ]
+
+        mock_tool = MagicMock()
+        mock_tool.name = "search_web"
+        mock_tool.ainvoke = AsyncMock(return_value=mcp_text_block)
+
+        mock_client = MagicMock()
+        mock_client.get_tools = AsyncMock(return_value=[mock_tool])
+
+        with (
+            patch("agent.nodes.web_agent.MultiServerMCPClient", return_value=mock_client),
+            patch("agent.nodes.web_agent.get_jwt_token", return_value="fake_token"),
+        ):
+            res = await run(base_state)
+            assert len(res["findings"]) == 1
+            assert len(res["findings"][0].web_results) == 1
+            assert res["findings"][0].web_results[0].title == "MCP Title"
+            assert res["findings"][0].tool_errors == []
+
+    @pytest.mark.asyncio
+    async def test_arxiv_agent_executes_fetch(self, base_state):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from agent.nodes.arxiv_agent import run
+
+        mock_tool = MagicMock()
+        mock_tool.name = "fetch_papers"
+        mock_tool.ainvoke = AsyncMock(
+            return_value=[
+                {
+                    "arxiv_id": "2501.12345",
+                    "title": "Paper 1",
+                    "abstract": "Abstract 1",
+                    "authors": ["Author A"],
+                    "published_date": "2025-01-01",
+                    "url": "https://arxiv.org/abs/2501.12345",
+                }
+            ]
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_tools = AsyncMock(return_value=[mock_tool])
+
+        with (
+            patch("agent.nodes.arxiv_agent.MultiServerMCPClient", return_value=mock_client),
+            patch("agent.nodes.arxiv_agent.get_jwt_token", return_value="fake_token"),
+        ):
+            res = await run(base_state)
+            assert len(res["findings"]) == 1
+            assert len(res["findings"][0].papers) == 1
+            assert res["findings"][0].papers[0].title == "Paper 1"
+            assert res["findings"][0].tool_errors == []
+
+    @pytest.mark.asyncio
+    async def test_github_agent_executes_search(self, base_state):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from agent.nodes.github_agent import run
+
+        mock_tool = MagicMock()
+        mock_tool.name = "search_repos"
+        mock_tool.ainvoke = AsyncMock(
+            return_value=[
+                {
+                    "name": "owner/repo",
+                    "url": "https://github.com/owner/repo",
+                    "description": "Repo desc",
+                    "stars": 100,
+                    "language": "Python",
+                    "last_updated": "2025-01-01T00:00:00Z",
+                }
+            ]
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_tools = AsyncMock(return_value=[mock_tool])
+
+        with (
+            patch("agent.nodes.github_agent.MultiServerMCPClient", return_value=mock_client),
+            patch("agent.nodes.github_agent.get_jwt_token", return_value="fake_token"),
+        ):
+            res = await run(base_state)
+            assert len(res["findings"]) == 1
+            assert len(res["findings"][0].repos) == 1
+            assert res["findings"][0].repos[0].name == "owner/repo"
+            assert res["findings"][0].tool_errors == []

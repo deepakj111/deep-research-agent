@@ -21,10 +21,13 @@ _PROFILES_DIR = Path(__file__).resolve().parent / "profiles"
 class ProfileConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    name: str
     description: str
     max_web_results: int
     max_arxiv_papers: int
     max_github_repos: int
+    max_iterations: int
+    synthesis_depth: str
     query_decomposition: str
 
 

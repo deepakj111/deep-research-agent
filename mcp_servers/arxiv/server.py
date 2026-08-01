@@ -4,7 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 import httpx
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 from starlette.responses import JSONResponse
 
 # Ensure the shared directory is on sys.path for imports
@@ -43,9 +43,19 @@ def _parse_atom(xml_text: str) -> list[dict]:
     return papers
 
 
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=20.0)
+    return _http_client
+
+
 @mcp.tool()
 @require_auth
-async def fetch_papers(ctx, query: str, max_papers: int = 5) -> list[dict]:
+async def fetch_papers(ctx: Context, query: str, max_papers: int = 5) -> list[dict]:
     """
     Search arXiv for academic papers matching the query.
 
@@ -58,19 +68,18 @@ async def fetch_papers(ctx, query: str, max_papers: int = 5) -> list[dict]:
     if cached:
         return cached
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            "https://export.arxiv.org/api/query",
-            params={
-                "search_query": f"all:{query}",
-                "max_results": max_papers,
-                "sortBy": "submittedDate",
-                "sortOrder": "descending",
-            },
-            timeout=20.0,
-        )
-        response.raise_for_status()
-        papers = _parse_atom(response.text)
+    client = _get_http_client()
+    response = await client.get(
+        "https://export.arxiv.org/api/query",
+        params={
+            "search_query": f"all:{query}",
+            "max_results": max_papers,
+            "sortBy": "submittedDate",
+            "sortOrder": "descending",
+        },
+    )
+    response.raise_for_status()
+    papers = _parse_atom(response.text)
 
     cache.set(cache_key, papers)
     return papers

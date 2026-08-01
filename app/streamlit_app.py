@@ -22,7 +22,7 @@ st.set_page_config(
     page_title="DeepResearch Agent",
     page_icon="🔬",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 inject_theme()

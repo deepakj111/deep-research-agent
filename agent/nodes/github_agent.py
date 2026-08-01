@@ -12,9 +12,10 @@ from config.profiles import load_profile
 from config.settings import settings
 from observability.tracer import ToolCallRecord, get_tracer
 from utils.auth import get_jwt_token
+from utils.mcp_helpers import parse_mcp_raw_results
 
 # Limit concurrent GitHub MCP calls across all parallel agents
-_semaphore = asyncio.Semaphore(3)
+_semaphore = asyncio.Semaphore(settings.agent_max_concurrency)
 
 
 async def run(state: ResearchState) -> dict:
@@ -32,9 +33,8 @@ async def run(state: ResearchState) -> dict:
     success = True
 
     try:
-        async with (
-            _semaphore,
-            MultiServerMCPClient(  # type: ignore[misc]
+        async with _semaphore:
+            client = MultiServerMCPClient(
                 {
                     "github": {
                         "url": settings.github_mcp_url,
@@ -42,8 +42,7 @@ async def run(state: ResearchState) -> dict:
                         "headers": {"Authorization": f"Bearer {get_jwt_token()}"},
                     }
                 }
-            ) as client,
-        ):  # type: ignore[misc]
+            )
             tools = await client.get_tools()
             search_tool = next(t for t in tools if t.name == "search_repos")
 
@@ -55,8 +54,8 @@ async def run(state: ResearchState) -> dict:
 
             raw = await retry_with_policy("search_repos", _call_with_cb)
 
-            if isinstance(raw, list):
-                repos = [GitHubRepo(**r) for r in raw]
+            parsed_list = parse_mcp_raw_results(raw)
+            repos = [GitHubRepo(**r) for r in parsed_list]
 
             # PII scrub string fields after model construction
             for repo in repos:

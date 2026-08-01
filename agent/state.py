@@ -1,9 +1,30 @@
-# agent/state.py
 import operator
 from datetime import UTC, datetime
 from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, Field
+
+# Register custom state classes with LangGraph checkpoint serializer
+try:
+    import langgraph.checkpoint.serde.jsonplus as _serde_jsonplus
+
+    _state_classes = [
+        "WebResult",
+        "ArxivPaper",
+        "GitHubRepo",
+        "ResearchFindings",
+        "CritiqueOutput",
+        "Citation",
+        "Finding",
+        "ContradictionRecord",
+        "ReportOutput",
+        "RunMetadata",
+    ]
+    if hasattr(_serde_jsonplus, "_ALLOWED_MSG_PACK_TYPES"):
+        for _cls in _state_classes:
+            _serde_jsonplus._ALLOWED_MSG_PACK_TYPES.add(("agent.state", _cls))
+except Exception:
+    pass
 
 
 class WebResult(BaseModel):
@@ -72,7 +93,7 @@ class ContradictionRecord(BaseModel):
     claim_a: str
     claim_b: str
     resolution: str
-    preferred_source: Literal["gpt4o", "claude", "unresolved"]
+    preferred_source: Literal["primary", "secondary", "unresolved"]
 
 
 class ReportOutput(BaseModel):
@@ -106,6 +127,7 @@ class ResearchState(TypedDict):
 
     # Planning
     query_difficulty: str
+    relevant_sources: list[str]
     subquestions: list[str]
     approved_plan: bool
 

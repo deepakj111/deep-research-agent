@@ -12,9 +12,10 @@ from config.profiles import load_profile
 from config.settings import settings
 from observability.tracer import ToolCallRecord, get_tracer
 from utils.auth import get_jwt_token
+from utils.mcp_helpers import parse_mcp_raw_results
 
 # Limit concurrent arXiv MCP calls across all parallel agents
-_semaphore = asyncio.Semaphore(3)
+_semaphore = asyncio.Semaphore(settings.agent_max_concurrency)
 
 
 async def run(state: ResearchState) -> dict:
@@ -32,9 +33,8 @@ async def run(state: ResearchState) -> dict:
     success = True
 
     try:
-        async with (
-            _semaphore,
-            MultiServerMCPClient(  # type: ignore[misc]
+        async with _semaphore:
+            client = MultiServerMCPClient(
                 {
                     "arxiv": {
                         "url": settings.arxiv_mcp_url,
@@ -42,8 +42,7 @@ async def run(state: ResearchState) -> dict:
                         "headers": {"Authorization": f"Bearer {get_jwt_token()}"},
                     }
                 }
-            ) as client,
-        ):  # type: ignore[misc]
+            )
             tools = await client.get_tools()
             fetch_tool = next(t for t in tools if t.name == "fetch_papers")
 
@@ -57,8 +56,8 @@ async def run(state: ResearchState) -> dict:
 
             raw = await retry_with_policy("fetch_papers", _call_with_cb)
 
-            if isinstance(raw, list):
-                papers = [ArxivPaper(**p) for p in raw]
+            parsed_list = parse_mcp_raw_results(raw)
+            papers = [ArxivPaper(**p) for p in parsed_list]
 
             # PII scrub string fields after model construction
             for paper in papers:

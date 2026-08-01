@@ -172,3 +172,67 @@ class TestGitHubServerNormalisation:
         assert repo.name == "openai/gpt-4"
         assert repo.stars == 15000
         assert repo.language == "Python"
+
+
+class TestMCPServerToolSchemas:
+    @pytest.mark.asyncio
+    async def test_web_search_schema_omits_ctx(self):
+        from mcp_servers.web_search.server import mcp
+
+        tools = await mcp.list_tools()
+        search_tool = next(t for t in tools if t.name == "search_web")
+        params = search_tool.parameters
+        assert "ctx" not in params.get("properties", {})
+        assert "ctx" not in params.get("required", [])
+
+    @pytest.mark.asyncio
+    async def test_arxiv_schema_omits_ctx(self):
+        from mcp_servers.arxiv.server import mcp
+
+        tools = await mcp.list_tools()
+        fetch_tool = next(t for t in tools if t.name == "fetch_papers")
+        params = fetch_tool.parameters
+        assert "ctx" not in params.get("properties", {})
+        assert "ctx" not in params.get("required", [])
+
+    @pytest.mark.asyncio
+    async def test_github_schema_omits_ctx(self):
+        from mcp_servers.github.server import mcp
+
+        tools = await mcp.list_tools()
+        search_tool = next(t for t in tools if t.name == "search_repos")
+        params = search_tool.parameters
+        assert "ctx" not in params.get("properties", {})
+        assert "ctx" not in params.get("required", [])
+
+    @pytest.mark.asyncio
+    async def test_web_search_direct_tool_call_without_ctx(self, monkeypatch):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import utils.auth as auth_mod
+        from mcp_servers.web_search.server import search_web
+
+        monkeypatch.setenv("MCP_JWT_SECRET", "testsecret")
+        monkeypatch.setenv("TAVILY_API_KEY", "testtavily")
+
+        token = auth_mod.get_jwt_token()
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.request.headers = {"Authorization": f"Bearer {token}"}
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json = MagicMock(
+            return_value={
+                "results": [{"url": "https://a.com", "title": "A", "content": "B", "score": 0.9}]
+            }
+        )
+
+        mock_client = MagicMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+
+        with patch("mcp_servers.web_search.server._get_http_client", return_value=mock_client):
+            res = await search_web(mock_ctx, query="test query", max_results=3)
+            assert len(res) == 1
+            assert res[0]["url"] == "https://a.com"
+            assert res[0]["snippet"] == "B"

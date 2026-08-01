@@ -10,15 +10,12 @@ from agent.state import ResearchState
 from config.settings import settings
 from utils.callbacks import TokenCostCallback
 
-# Default timeout for LLM calls (seconds). Prevents hangs when the
-# upstream provider is slow or unresponsive.
-_LLM_TIMEOUT_SECONDS = 60.0
-
 
 class ClassifierOutput(BaseModel):
     difficulty: Literal["narrow", "broad", "ambiguous"]
     reasoning: str
     suggested_num_questions: int
+    relevant_sources: list[Literal["web", "arxiv", "github"]]
 
 
 @functools.lru_cache(maxsize=1)
@@ -32,12 +29,17 @@ CLASSIFIER_PROMPT = """Classify this research query:
 
 Query: {query}
 
-Difficulty levels:
+1. Difficulty levels:
 - narrow: specific, well-defined topic → suggest 3 sub-questions
 - broad: covers multiple domains or time periods → suggest 5-6 sub-questions
 - ambiguous: unclear intent, needs decomposition → suggest 4 sub-questions
 
-Output JSON only. Be concise."""
+2. Relevant sources (select only what is appropriate):
+- web: web search (market trends, news, financial recommendations, general knowledge). Included for almost all queries.
+- arxiv: academic papers (scientific research, physics, ML papers, academic algorithms). DO NOT select for general news, financial, market, or simple coding questions.
+- github: code repositories & libraries (software engineering, open-source repos, API implementations). DO NOT select for non-software topics like news, finance, science without code, etc.
+
+Output JSON matching the schema."""
 
 
 async def run(state: ResearchState) -> dict:
@@ -60,8 +62,11 @@ async def run(state: ResearchState) -> dict:
             CLASSIFIER_PROMPT.format(query=query),
             config={"callbacks": [cb]},
         ),
-        timeout=_LLM_TIMEOUT_SECONDS,
+        timeout=settings.classifier_timeout_seconds,
     )
+
+    # Fallback to web if LLM or mock returns empty/missing list
+    sources = getattr(result, "relevant_sources", ["web"]) or ["web"]
 
     # ── Update run metadata with cost ─────────────────────────────────────
     meta = state.get("run_metadata")
@@ -72,6 +77,7 @@ async def run(state: ResearchState) -> dict:
 
     thought_entries.append(
         f"[Classifier] Query classified as '{result.difficulty}'. "
+        f"Selected sources: {sources}. "
         f"Suggested {result.suggested_num_questions} sub-questions. "
         f"Reason: {result.reasoning}"
     )
@@ -79,6 +85,7 @@ async def run(state: ResearchState) -> dict:
     return {
         "query": query,  # propagate sanitized query to all downstream nodes
         "query_difficulty": result.difficulty,
+        "relevant_sources": sources,
         "run_metadata": meta,
         "thought_log": thought_entries,
     }

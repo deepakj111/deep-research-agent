@@ -91,7 +91,6 @@ All secrets are injected via environment variables from a `.env` file (never bak
 ```bash
 # .env (not committed to git)
 OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
 TAVILY_API_KEY=tvly-...
 GITHUB_TOKEN=ghp_...
 MCP_JWT_SECRET=your-super-secret-jwt-key-min-32-chars
@@ -231,8 +230,8 @@ workflow.add_conditional_edges(
 
 | Limit | Default | Environment Variable |
 |---|---|---|
-| Max iterations | 15 | `MAX_ITERATIONS` |
-| Max cost per run | $2.00 | `MAX_COST_PER_RUN_USD` |
+| Max iterations | 10 | `MAX_ITERATIONS` |
+| Max cost per run | $0.50 | `MAX_COST_PER_RUN_USD` |
 
 ### Cost Estimation
 
@@ -252,7 +251,7 @@ The industry-standard approach for LLM cost estimation is [LiteLLM](https://gith
 - ✅ Dynamic pricing for 2,600+ models (not a hardcoded dictionary)
 - ✅ Automatic refresh every 7 days with local disk caching
 - ✅ Zero additional runtime dependencies
-- ✅ Graceful offline fallback to conservative GPT-4o pricing
+- ✅ Graceful offline fallback to conservative GPT-5 pricing
 - ✅ No security vulnerabilities from litellm's dependency tree
 
 #### How It Works
@@ -268,14 +267,14 @@ First call to estimate_cost()
   │
   ├─ Stale disk cache exists? → use it (better than nothing)
   │
-  └─ No data at all → conservative GPT-4o fallback ($2.50/$10.00 per 1M tokens)
+  └─ No data at all → conservative GPT-5 fallback ($1.25/$10.00 per 1M tokens)
 ```
 
-Unknown models always fall back to GPT-4o pricing (conservative estimate — never underestimates cost).
+Unknown models always fall back to GPT-5 pricing (conservative estimate — never underestimates cost).
 
 ### Token Usage Callback
 
-The `utils/callbacks.py` `TokenCostCallback` is a LangChain callback handler that accumulates token counts and estimated costs across all LLM calls within a run. It handles both OpenAI and Anthropic token usage response formats.
+The `utils/callbacks.py` `TokenCostCallback` is a LangChain callback handler that accumulates token counts and estimated costs across all LLM calls within a run.
 
 ---
 

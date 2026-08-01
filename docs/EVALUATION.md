@@ -21,7 +21,7 @@ This document describes the automated evaluation and benchmarking infrastructure
 
 The evaluation pipeline answers a critical question: **"Is the agent producing good research reports?"**
 
-Unlike traditional software testing, AI agent output quality cannot be verified with deterministic assertions. Instead, we use an **LLM-as-judge** approach where GPT-4o evaluates each report across five quality dimensions, producing a normalised score between 0 and 1.
+Unlike traditional software testing, AI agent output quality cannot be verified with deterministic assertions. Instead, we use an **LLM-as-judge** approach where the primary evaluator model (`settings.default_model`) evaluates each report across five quality dimensions, producing a normalised score between 0 and 1.
 
 This score is used as:
 - A **CI quality gate** — the GitHub Actions `eval.yml` workflow fails if the average score drops below 0.70
@@ -34,13 +34,13 @@ This score is used as:
 
 **File**: `evaluation/evaluator.py`
 
-The evaluator uses GPT-4o with `temperature=0` and structured output (`EvalScores` Pydantic model) to ensure deterministic, parseable scoring.
+The evaluator uses the primary model (GPT-5) with `temperature=0` and structured output (`EvalScores` Pydantic model) to ensure deterministic, parseable scoring.
 
 ### How It Works
 
 1. The completed `ReportOutput` is flattened into plain text
 2. The source inventory is compiled from `report.sources` (capped at 40 sources to stay within context limits)
-3. A detailed rubric prompt is sent to GPT-4o for each dimension
+3. A detailed rubric prompt is sent to the evaluator model for each dimension
 4. The model returns a structured JSON response with five float scores (0.0–5.0) and evaluator notes
 5. Scores are normalised to [0, 1] by dividing the total (out of 25) by 25
 
@@ -237,8 +237,7 @@ The workflow exits with code 1 if the mean normalised score falls below the conf
 
 | Secret | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | GPT-4o for synthesis + evaluation |
-| `ANTHROPIC_API_KEY` | Claude Sonnet for synthesis |
+| `OPENAI_API_KEY` | Primary & Secondary models (`gpt-5-mini` default) for synthesis + evaluation |
 | `TAVILY_API_KEY` | Web search MCP server |
 | `MCP_JWT_SECRET` | MCP server JWT authentication |
 | `LANGCHAIN_API_KEY` | LangSmith tracing (optional) |

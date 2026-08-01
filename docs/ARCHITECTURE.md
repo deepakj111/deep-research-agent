@@ -32,16 +32,16 @@ The system follows a **microservices architecture** with clear separation of con
 │                                │                                 │
 │  ┌──────────┐  ┌──────────┐  ┌┴─────────┐  ┌────────────────┐  │
 │  │Classifier│→ │ Planner  │→ │Supervisor│→ │   Sub-Agents   │  │
-│  │(GPT-4o   │  │ (GPT-4o) │  │(Fan-out) │  │ web / arXiv /  │  │
-│  │ default) │  │  [HITL]  │  │  [Send]  │  │    github      │  │
+│  │(Primary  │  │ (Primary │  │(Fan-out) │  │ web / arXiv /  │  │
+│  │ model)   │  │  [HITL]  │  │  [Send]  │  │    github      │  │
 │  └──────────┘  └──────────┘  └──────────┘  └───────┬────────┘  │
 │                                                     │           │
 │  ┌──────────────────────────────────────────────────┤           │
 │  │                                                  ↓           │
 │  │  ┌──────────┐  ┌────────────┐  ┌──────────┐                 │
 │  │  │  Critic  │← │Synthesizer │← │  Writer  │→ ReportOutput   │
-│  │  │(GPT-4o)  │  │(GPT-4o +   │  │(Citation │                 │
-│  │  │ [Loop?]  │  │  Claude)   │  │ builder) │                 │
+│  │  │(Primary) │  │ (Primary + │  │(Citation │                 │
+│  │  │ [Loop?]  │  │ Fallback)  │  │ builder) │                 │
 │  │  └──────────┘  └────────────┘  └──────────┘                 │
 │  │       ↑                                                      │
 │  │       └── Budget Guard (iteration + cost limits)             │
@@ -64,8 +64,8 @@ The system follows a **microservices architecture** with clear separation of con
 | Layer | Technology |
 |---|---|
 | Agent orchestration | LangGraph `StateGraph` with `SqliteSaver` checkpointing |
-| Primary LLM | OpenAI GPT-4o (`langchain-openai`) |
-| Secondary LLM | Anthropic Claude Sonnet (`langchain-anthropic`) |
+| Primary LLM | OpenAI GPT-5-mini (`langchain-openai`) |
+| Secondary LLM | OpenAI GPT-5-mini (`langchain-openai`) |
 | Tool protocol | Model Context Protocol (MCP) via `FastMCP` over SSE |
 | API gateway | FastAPI with Server-Sent Events (SSE) |
 | Frontend | Streamlit |
@@ -112,8 +112,8 @@ The agent is defined as a **LangGraph `StateGraph`** in `agent/graph.py`. The gr
                           ▼                     ▼
                    ┌────────────┐       ┌──────────────┐
                    │  Planner   │       │ Synthesizer  │
-                   │ (loop back)│       │ (GPT + Claude│
-                   └────────────┘       │  parallel)   │
+                   │ (loop back)│       │  (Primary +  │
+                   └────────────┘       │   Fallback)  │
                                         └──────┬───────┘
                                                │
                                                ▼
@@ -125,7 +125,7 @@ The agent is defined as a **LangGraph `StateGraph`** in `agent/graph.py`. The gr
 
 The graph uses **conditional edges** after the critic node, mediated by the `check_budget()` function from `agent/budget_guard.py`:
 
-1. **Budget check first**: If the iteration count has reached `settings.max_iterations` (default: 15) or the estimated cost has exceeded `settings.max_cost_per_run_usd` (default: $2.00), the graph routes directly to synthesis.
+1. **Budget check first**: If the iteration count has reached `settings.max_iterations` (default: 10) or the estimated cost has exceeded `settings.max_cost_per_run_usd` (default: $0.50), the graph routes directly to synthesis.
 2. **Critic decision**: If budget is OK, the critic's `should_continue` flag determines whether to loop (route back to planner for another targeted research round) or proceed to synthesis.
 
 ---
@@ -141,7 +141,7 @@ The graph uses **conditional edges** after the critic node, mediated by the `che
 
 ### Planner (`agent/nodes/planner.py`)
 
-- **Model**: GPT-4o
+- **Model**: Configurable via `settings.default_model`
 - **Purpose**: Generates research sub-questions based on the classified difficulty and user profile
 - **HITL**: The graph is interrupted *before* this node. The API emits an SSE `hitl_interrupt` event on the first iteration. The user can:
   - **Approve**: The planner runs normally
@@ -181,17 +181,17 @@ retry_with_policy() → circuit_breaker.call() → MCP tool.ainvoke()
 
 ### Critic (`agent/nodes/critic.py`)
 
-- **Model**: GPT-4o with structured output (`CritiqueOutput`)
+- **Model**: Configurable via `settings.default_model` with structured output (`CritiqueOutput`)
 - **Scores**: `coverage_score`, `recency_score`, `depth_score`, `source_diversity_score` (each 0.0–1.0)
+- **Relevant Sources Filter**: Evaluates `source_diversity_score` against `relevant_sources` selected by the classifier so omitted non-relevant source types (e.g. arXiv for web queries) are not penalized.
 - **Decision**: Sets `should_continue: bool` — if `True` and budget permits, the graph loops back to planner
 - **Source trust scoring**: `score_source_trust()` evaluates each source based on type-specific heuristics (citation count for arXiv, star count for GitHub, domain trustworthiness for web)
 
 ### Synthesizer (`agent/nodes/synthesizer.py`)
 
-- **Models**: GPT-4o and Claude Sonnet run **in parallel** via `asyncio.gather()`
-- **Reconciliation**: When both models succeed, a third LLM call (`ReconcileOutput`) detects contradictions and records model disagreements
-- **Fallback**: If one model fails, the other's output is used directly. If both fail, `final_report` is set to `None` and the error is logged
-- **Output**: `ReportOutput` with `contradictions` and `model_disagreements` fields
+- **Model Architecture**: Streamlined execution with primary model synthesis (`settings.default_model`) and automatic fallback to secondary model (`settings.secondary_model`) if primary fails.
+- **Performance**: Eliminates redundant multi-model latency while maintaining full structured report output (`ReportOutput`).
+- **Output**: `ReportOutput` with key findings, citations, executive summary, emerging trends, and next steps.
 
 ### Writer (`agent/nodes/writer.py`)
 
@@ -237,11 +237,11 @@ Two profile configurations (`config/profiles/fast.yaml` and `deep.yaml`) control
 | `max_web_results` | 3 | 8 |
 | `max_arxiv_papers` | 2 | 5 |
 | `max_github_repos` | 3 | 5 |
-| `max_iterations` | 8 | 15 |
+| `max_iterations` | 2 | 4 |
 | `synthesis_depth` | brief | comprehensive |
 | `query_decomposition` | breadth-first | depth-first |
 
-> **Note:** The LLM model is not per-profile — it is a global setting controlled by `settings.default_model` (default: `gpt-4o`) and `settings.secondary_model` (default: `claude-sonnet-4-5`). A third query decomposition strategy, `hypothesis-driven`, is also implemented and can be used in custom profiles.
+> **Note:** The LLM model is not per-profile — it is a global setting controlled by `settings.default_model` (default: `gpt-5`) and `settings.secondary_model` (default: `gpt-5-mini`). A third query decomposition strategy, `hypothesis-driven`, is also implemented and can be used in custom profiles.
 
 ---
 
@@ -293,25 +293,26 @@ All servers use **SSE (Server-Sent Events)** transport, which is the standard MC
 
 ## Multi-Model Synthesis
 
-The synthesizer implements a **parallel dual-model architecture**:
+The synthesizer implements a **streamlined synthesis architecture with automated model fallback**:
 
 ```
-                 ┌──────────┐
-     ┌──────────▸│  GPT-4o  │──────────┐
-     │           └──────────┘          │
-     │                                  │  asyncio.gather()
-  Prompt                                ▼
-     │           ┌──────────┐    ┌──────────────┐
-     └──────────▸│  Claude  │───▸│ Reconciler   │──▸ Final Report
-                 │  Sonnet  │    │ (GPT-4o)     │
-                 └──────────┘    │ Contradictions│
-                                 └──────────────┘
+                 ┌─────────────────────┐
+                 │    Primary Model    │ ── (success) ──▸ Final Report
+                 │    (settings.       │
+                 │    default_model)   │
+                 └──────────┬──────────┘
+                            │ (on error/timeout)
+                            ▼
+                 ┌─────────────────────┐
+                 │   Secondary Model   │ ── (fallback) ──▸ Final Report
+                 │   (settings.        │
+                 │   secondary_model)  │
+                 └─────────────────────┘
 ```
 
-1. **Parallel generation**: Both models receive the same synthesis prompt (context from all findings)
-2. **Reconciliation**: A third LLM call compares the two executive summaries, identifying contradictions as `ContradictionRecord` objects
-3. **Fallback**: If one model fails, the other's report is used directly. If both fail, the writer logs an error and produces no report
-4. **Transparency**: Model disagreements are surfaced in the final report's `model_disagreements` field
+1. **Primary Generation**: The primary model (`settings.default_model`, e.g. `gpt-5-mini`) receives the synthesis prompt containing formatted findings from all sub-questions.
+2. **Automated Fallback**: If the primary model fails or times out (`settings.synthesis_timeout_seconds`), execution automatically falls back to the secondary model (`settings.secondary_model`, e.g. `gpt-5-mini`).
+3. **Structured Verification**: The result is validated against the `ReportOutput` schema (including executive summary, key findings with citations, emerging trends, and next steps).
 
 ---
 

@@ -2,7 +2,7 @@
 
 An autonomous deep research agent that accepts a natural-language query and produces a **structured, cited, multi-source research report** — drawing from **live web search**, **academic papers (arXiv)**, and **GitHub repositories** simultaneously.
 
-Built with **LangGraph** for stateful agent orchestration, **Model Context Protocol (MCP)** for standardised tool integration, and a **multi-model synthesis** pipeline (GPT-4o + Claude Sonnet) with automated contradiction detection.
+Built with **LangGraph** for stateful agent orchestration, **Model Context Protocol (MCP)** for standardised tool integration, and a **multi-model synthesis** pipeline (GPT-5-mini) with automated contradiction detection.
 
 ---
 
@@ -13,7 +13,7 @@ Built with **LangGraph** for stateful agent orchestration, **Model Context Proto
 | **MCP Tool Servers** | Three custom `FastMCP` servers (Web Search, arXiv, GitHub) running as independent microservices over HTTP/SSE with JWT authentication and SQLite caching. |
 | **LangGraph Orchestration** | Stateful, resumable agent graph with `SqliteSaver` checkpointing and Human-in-the-Loop (HITL) plan approval via `interrupt_before`. |
 | **Parallel Fan-Out** | Supervisor dispatches all sub-questions to all 3 agents concurrently using LangGraph's `Send` API — *N* questions × 3 agents = *3N* parallel tasks. |
-| **Multi-Model Synthesis** | Parallel synthesis with GPT-4o and Claude Sonnet, followed by an automated reconciliation step that detects and resolves model disagreements. |
+| **Multi-Model Synthesis** | Primary and secondary model synthesis (GPT-5-mini default), followed by an automated fallback and contradiction tracking step. |
 | **Critic Loop** | Quality-gated iteration: a critic node scores coverage, recency, depth, and source diversity, then decides whether to loop for more research or proceed to synthesis. |
 | **Budget Guard** | Graph-integrated kill switch enforcing hard limits on iteration count and estimated USD cost — prevents runaway API spend. |
 | **Per-Tool Retry Policies** | Configurable exponential/linear backoff per tool with graceful degradation: non-critical tools (arXiv, GitHub) degrade with notes; critical tools (web search) propagate failures. |
@@ -73,8 +73,7 @@ Edit `.env` with your API keys:
 
 | Key | Purpose | Get it from |
 |---|---|---|
-| `OPENAI_API_KEY` | Primary LLM (GPT-4o) | [platform.openai.com](https://platform.openai.com/api-keys) |
-| `ANTHROPIC_API_KEY` | Secondary LLM (Claude Sonnet 4.5) | [console.anthropic.com](https://console.anthropic.com) |
+| `OPENAI_API_KEY` | Primary & Secondary LLMs (`gpt-5-mini` default) | [platform.openai.com](https://platform.openai.com/api-keys) |
 | `TAVILY_API_KEY` | Web search | [app.tavily.com](https://app.tavily.com) |
 | `GITHUB_TOKEN` | GitHub API | GitHub → Settings → Developer Settings → Tokens |
 | `LANGCHAIN_API_KEY` | LangSmith tracing (optional) | [smith.langchain.com](https://smith.langchain.com) |
@@ -128,7 +127,7 @@ deep-research-agent/
 │   │   ├── arxiv_agent.py        # arXiv sub-agent
 │   │   ├── github_agent.py       # GitHub sub-agent
 │   │   ├── critic.py             # Quality evaluation + loop decision
-│   │   ├── synthesizer.py        # Multi-model synthesis + reconciliation
+│   │   ├── synthesizer.py        # Primary synthesis with secondary fallback
 │   │   └── writer.py             # Citation builder + report finalisation
 │   └── prompts/                  # YAML prompt templates
 ├── api/
@@ -145,8 +144,7 @@ deep-research-agent/
 │   └── profiles/                 # fast.yaml / deep.yaml research profiles
 ├── observability/
 │   ├── tracer.py                 # Async SQLite run tracer
-│   ├── schema.sql                # Tracer schema
-│   └── dashboard.py              # Dashboard data layer
+│   └── schema.sql                # Tracer schema
 ├── evaluation/
 │   ├── evaluator.py              # LLM-as-judge (5 dimensions)
 │   ├── run_benchmark.py          # Benchmark runner with CI gate

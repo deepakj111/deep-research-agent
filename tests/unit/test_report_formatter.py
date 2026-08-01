@@ -63,14 +63,14 @@ def sample_report() -> ReportOutput:
             "Track topological qubit progress at Microsoft",
         ],
         model_disagreements=[
-            "GPT-4o and Claude disagreed on timeline estimates for fault tolerance."
+            "GPT-5 and GPT-5-mini disagreed on timeline estimates for fault tolerance."
         ],
         contradictions=[
             ContradictionRecord(
                 claim_a="Fault tolerance by 2027",
                 claim_b="Fault tolerance by 2030",
                 resolution="Timeline depends on qubit type; surface codes favor 2027",
-                preferred_source="gpt4o",
+                preferred_source="primary",
             )
         ],
         sources=[

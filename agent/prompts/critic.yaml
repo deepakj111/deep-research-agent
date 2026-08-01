@@ -3,6 +3,7 @@ evaluation_prompt: |
 
   Original query: {query}
   Sub-questions investigated: {subquestions}
+  Relevant source types selected: {relevant_sources}
   Number of web sources: {web_count}
   Number of academic papers: {paper_count}
   Number of GitHub repos: {repo_count}
@@ -13,9 +14,9 @@ evaluation_prompt: |
   - coverage_score: Are all sub-questions addressed?
   - recency_score: Are sources recent (last 12 months)?
   - depth_score: Is technical depth sufficient?
-  - source_diversity_score: Are all 3 source types (web/arxiv/github) used?
+  - source_diversity_score: Are the selected source types ({relevant_sources}) used effectively? DO NOT penalize source types that were not selected for this query.
 
   If any score < 0.65, list what is missing in missing_areas.
-  Set should_continue=true ONLY if gaps exist AND iteration < {max_iterations}.
+  Set should_continue=true ONLY if critical information gaps exist AND iteration < {max_iterations}.
 
   Output JSON only.

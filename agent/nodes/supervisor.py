@@ -11,17 +11,26 @@ async def run(state: ResearchState) -> Command:
     if total == 0:
         return Command(goto="critic")
 
-    # Fan-out: dispatch ALL subquestions to all 3 agents in one shot.
-    # We always do this — supervisor is only called once per research cycle.
-    # After all Send tasks complete, each agent routes back to critic.
+    # Map state's relevant_sources to target node names
+    source_map = {
+        "web": "web_agent",
+        "arxiv": "arxiv_agent",
+        "github": "github_agent",
+    }
+    relevant_sources = state.get("relevant_sources", ["web", "arxiv", "github"])
+    target_agents = [source_map[s] for s in relevant_sources if s in source_map]
+    if not target_agents:
+        target_agents = ["web_agent"]
+
+    # Fan-out: dispatch subquestions to selected target agents
     sends = []
     for subquestion in subquestions:
-        for agent in ["web_agent", "arxiv_agent", "github_agent"]:
+        for agent in target_agents:
             sends.append(Send(agent, {**state, "subquestions": [subquestion]}))
 
     log = (
-        f"[Supervisor] Parallel fan-out: {total} subquestions "
-        f"× 3 agents = {len(sends)} concurrent tasks."
+        f"[Supervisor] Smart fan-out: {total} subquestions "
+        f"× {len(target_agents)} selected agents ({', '.join(target_agents)}) = {len(sends)} concurrent tasks."
     )
     return Command(
         goto=sends,

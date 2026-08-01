@@ -10,8 +10,6 @@ from agent.state import CritiqueOutput, ResearchState, RunMetadata
 from config.settings import settings
 from utils.callbacks import TokenCostCallback
 
-_LLM_TIMEOUT_SECONDS = 60.0
-
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 with open(_PROMPTS_DIR / "critic.yaml") as f:
@@ -69,6 +67,7 @@ async def run(state: ResearchState) -> dict:
             CRITIC_PROMPT.format(
                 query=state["query"],
                 subquestions=state.get("subquestions", []),
+                relevant_sources=state.get("relevant_sources", ["web"]),
                 web_count=sum(len(f.web_results) for f in all_findings),
                 paper_count=sum(len(f.papers) for f in all_findings),
                 repo_count=sum(len(f.repos) for f in all_findings),
@@ -78,7 +77,7 @@ async def run(state: ResearchState) -> dict:
             ),
             config={"callbacks": [cb]},
         ),
-        timeout=_LLM_TIMEOUT_SECONDS,
+        timeout=settings.critic_timeout_seconds,
     )
 
     # Build a new RunMetadata with incremented iteration_count.

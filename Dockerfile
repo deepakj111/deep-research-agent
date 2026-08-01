@@ -34,12 +34,16 @@ COPY mcp_servers/__init__.py mcp_servers/__init__.py
 # Ensure the project package is installed
 RUN uv sync --frozen --no-dev
 
+RUN chown -R appuser:appuser /app
+
 # Switch to non-root user
 USER appuser
+
+ENV PYTHONPATH=/app
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
     CMD ["curl", "-f", "http://localhost:8080/health"]
 
-CMD ["uv", "run", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uv", "run", "--no-dev", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080"]

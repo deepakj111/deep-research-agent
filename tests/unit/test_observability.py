@@ -207,14 +207,14 @@ class TestNodeExecutionLogging:
                 input_tokens=500,
                 output_tokens=200,
                 estimated_cost_usd=0.0035,
-                model_name="gpt-4o",
+                model_name="gpt-5",
             )
         )
         timings = tracer.get_node_timings("r4")
         assert len(timings) == 1
         assert timings[0]["node_name"] == "critic"
         assert timings[0]["input_tokens"] == 500
-        assert timings[0]["model_name"] == "gpt-4o"
+        assert timings[0]["model_name"] == "gpt-5"
 
 
 # ─────────────────────────── Eval Scores ────────────────────────────────────

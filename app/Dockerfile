@@ -37,12 +37,16 @@ COPY mcp_servers/__init__.py mcp_servers/__init__.py
 
 RUN uv sync --frozen --no-dev
 
+RUN chown -R appuser:appuser /app
+
 USER appuser
+
+ENV PYTHONPATH=/app
 
 EXPOSE 8501
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
     CMD ["curl", "-f", "http://localhost:8501/_stcore/health"]
 
-CMD ["uv", "run", "streamlit", "run", "app/streamlit_app.py", \
+CMD ["uv", "run", "--no-dev", "python", "-m", "streamlit", "run", "app/streamlit_app.py", \
      "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]

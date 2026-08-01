@@ -3,7 +3,7 @@ import os
 import sys
 
 import httpx
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 from starlette.responses import JSONResponse
 
 # Ensure the shared directory is on sys.path for imports
@@ -16,9 +16,19 @@ mcp = FastMCP("web-search-server")
 cache = CacheLayer(ttl_seconds=3600)
 
 
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=15.0)
+    return _http_client
+
+
 @mcp.tool()
 @require_auth
-async def search_web(ctx, query: str, max_results: int = 5) -> list[dict]:
+async def search_web(ctx: Context, query: str, max_results: int = 5) -> list[dict]:
     """
     Search the live web using Tavily and return structured results.
 
@@ -31,6 +41,10 @@ async def search_web(ctx, query: str, max_results: int = 5) -> list[dict]:
     Tavily's raw response uses 'content' and 'score' — we normalise here
     so the agent's WebResult(**r) construction never fails validation.
     """
+    query = (query or "").strip()[:380]
+    if not query:
+        return []
+
     cache_key = f"web:{query}:{max_results}"
     cached = cache.get(cache_key)
     if cached:
@@ -40,20 +54,19 @@ async def search_web(ctx, query: str, max_results: int = 5) -> list[dict]:
     if not tavily_key:
         raise RuntimeError("TAVILY_API_KEY environment variable is not set.")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.tavily.com/search",
-            json={
-                "api_key": tavily_key,
-                "query": query,
-                "max_results": max_results,
-                "include_answer": False,
-                "include_raw_content": False,
-            },
-            timeout=15.0,
-        )
-        response.raise_for_status()
-        raw_results: list[dict] = response.json().get("results", [])
+    client = _get_http_client()
+    response = await client.post(
+        "https://api.tavily.com/search",
+        json={
+            "api_key": tavily_key,
+            "query": query,
+            "max_results": max_results,
+            "include_answer": False,
+            "include_raw_content": False,
+        },
+    )
+    response.raise_for_status()
+    raw_results: list[dict] = response.json().get("results", [])
 
     # Normalise Tavily field names to match WebResult Pydantic model
     # Tavily returns: url, title, content, score

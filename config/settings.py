@@ -2,11 +2,12 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # LLM
+    # LLM & API Keys
     openai_api_key: str = ""
-    anthropic_api_key: str = ""
-    default_model: str = "gpt-4o"
-    secondary_model: str = "claude-sonnet-4-5"
+
+    # Central Model Configuration (non-sensitive defaults defined in config)
+    default_model: str = "gpt-5-mini"
+    secondary_model: str = "gpt-5-mini"
 
     # Per-node temperature overrides
     classifier_temperature: float = 0.0  # deterministic classification
@@ -30,8 +31,26 @@ class Settings(BaseSettings):
     langchain_project: str = "deep-research-agent"
 
     # Agent limits
-    max_iterations: int = 15
-    max_cost_per_run_usd: float = 2.0
+    max_iterations: int = 10
+    max_cost_per_run_usd: float = 0.5
+
+    # Node LLM Timeouts (seconds)
+    classifier_timeout_seconds: float = 60.0
+    planner_timeout_seconds: float = 90.0
+    critic_timeout_seconds: float = 60.0
+    synthesis_timeout_seconds: float = 120.0
+    evaluator_timeout_seconds: float = 90.0
+
+    # Agent Concurrency & MCP Settings
+    agent_max_concurrency: int = 10
+    mcp_connect_timeout_seconds: float = 15.0
+
+    # Cost Estimator Settings
+    pricing_cache_max_age_seconds: int = 7 * 24 * 60 * 60
+    pricing_fetch_timeout_seconds: float = 10.0
+
+    # Frontend UI Settings
+    avg_tokens_per_char: float = 0.25
 
     # API Server
     agent_api_url: str = "http://localhost:8080"

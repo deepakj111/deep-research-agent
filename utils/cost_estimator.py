@@ -21,6 +21,8 @@ import os
 import time
 from pathlib import Path
 
+from config.settings import settings
+
 logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
@@ -34,15 +36,17 @@ _CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "d
 
 _CACHE_FILE = _CACHE_DIR / "model_prices.json"
 
-# Refresh cache after 7 days
-_CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
-
-# Network timeout — keeps CI and offline starts fast
-_FETCH_TIMEOUT_SECONDS = 10
-
-# Conservative fallback — matches gpt-4o so unknown models are never underestimated.
-_DEFAULT_INPUT_COST_PER_TOKEN = 2.50 / 1_000_000
+# Conservative fallback — matches gpt-5 so unknown models are never underestimated.
+_DEFAULT_INPUT_COST_PER_TOKEN = 1.25 / 1_000_000
 _DEFAULT_OUTPUT_COST_PER_TOKEN = 10.00 / 1_000_000
+
+_LOCAL_OVERRIDES = {
+    "gpt-5": {"input_cost_per_token": 1.25 / 1_000_000, "output_cost_per_token": 10.00 / 1_000_000},
+    "gpt-5-mini": {
+        "input_cost_per_token": 0.25 / 1_000_000,
+        "output_cost_per_token": 2.00 / 1_000_000,
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Lazy-loaded pricing map (module-level singleton)
@@ -52,10 +56,10 @@ _cost_map: dict[str, dict] | None = None
 
 
 def _cache_is_fresh() -> bool:
-    """Return True if the local cache file exists and is younger than _CACHE_MAX_AGE_SECONDS."""
+    """Return True if the local cache file exists and is younger than settings.pricing_cache_max_age_seconds."""
     try:
         age = time.time() - _CACHE_FILE.stat().st_mtime
-        return age < _CACHE_MAX_AGE_SECONDS
+        return age < settings.pricing_cache_max_age_seconds
     except (FileNotFoundError, OSError):
         return False
 
@@ -71,7 +75,9 @@ def _fetch_and_cache() -> dict[str, dict]:
     try:
         import httpx
 
-        resp = httpx.get(_PRICING_URL, timeout=_FETCH_TIMEOUT_SECONDS, follow_redirects=True)
+        resp = httpx.get(
+            _PRICING_URL, timeout=settings.pricing_fetch_timeout_seconds, follow_redirects=True
+        )
         resp.raise_for_status()
         data: dict[str, dict] = resp.json()
         # Persist to cache
@@ -128,7 +134,7 @@ def _get_cost_map() -> dict[str, dict]:
         return _cost_map
 
     # No data at all — fallback pricing will be used per-call
-    logger.warning("No pricing data available — using conservative GPT-4o fallback rates")
+    logger.warning("No pricing data available — using conservative GPT-5 fallback rates")
     _cost_map = {}
     return _cost_map
 
@@ -143,6 +149,11 @@ def _lookup_model(model: str) -> tuple[float, float]:
     """
     cost_map = _get_cost_map()
     key = model.lower()
+
+    if key in _LOCAL_OVERRIDES:
+        return _LOCAL_OVERRIDES[key]["input_cost_per_token"], _LOCAL_OVERRIDES[key][
+            "output_cost_per_token"
+        ]
 
     # 1. Exact match (fast path — covers the vast majority of cases)
     info = cost_map.get(key)
@@ -160,7 +171,7 @@ def _lookup_model(model: str) -> tuple[float, float]:
         info = matches[0][1]
         return info["input_cost_per_token"], info["output_cost_per_token"]
 
-    # 3. Fallback — conservative GPT-4o pricing
+    # 3. Fallback — conservative GPT-5 pricing
     return _DEFAULT_INPUT_COST_PER_TOKEN, _DEFAULT_OUTPUT_COST_PER_TOKEN
 
 
@@ -169,7 +180,7 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     Estimate USD cost for a single LLM call.
 
     Uses the community-maintained LiteLLM pricing database (2,600+ models),
-    fetched and cached automatically.  Falls back to GPT-4o pricing for
+    fetched and cached automatically.  Falls back to GPT-5 pricing for
     unknown models (conservative estimate).
     """
     input_rate, output_rate = _lookup_model(model)

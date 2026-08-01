@@ -16,21 +16,3 @@ synthesis_prompt: |
 
   Be specific. Cite sources precisely. Flag uncertainty where it exists.
   Output structured JSON only.
-
-reconcile_prompt: |
-  Two AI models produced research summaries on the same query. Identify disagreements.
-
-  Query: {query}
-
-  Summary A (GPT-4o): {summary_a}
-
-  Summary B (Claude): {summary_b}
-
-  For each factual contradiction or conflicting claim, produce a ContradictionRecord with:
-  - claim_a: the claim from GPT-4o
-  - claim_b: the conflicting claim from Claude
-  - resolution: which is more credible and why (max 100 chars)
-  - preferred_source: "gpt4o" | "claude" | "unresolved"
-
-  Also provide a summary string of overall model agreement level.
-  Output structured JSON only.

@@ -27,6 +27,7 @@ async def test_classifier_node_runs():
         difficulty: str = "narrow"
         reasoning: str = "Specific query"
         suggested_num_questions: int = 3
+        relevant_sources: list[str] = ["web"]
 
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(return_value=FakeOutput())

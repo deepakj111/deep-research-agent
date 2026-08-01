@@ -205,7 +205,7 @@ def _build_graph():
 
     return workflow.compile(
         checkpointer=_hybrid_saver,
-        interrupt_before=["planner"],
+        interrupt_before=["supervisor"],
     )
 
 

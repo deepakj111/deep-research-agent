@@ -3,7 +3,7 @@ evaluation/evaluator.py
 
 LLM-as-judge evaluation pipeline for the DeepResearch Agent.
 
-Scoring model: GPT-4o with structured output (temperature=0 for determinism).
+Scoring model: Primary model (default: gpt-5) with structured output (temperature=0 for determinism).
 Five dimensions, each rated 0–5, then normalized to [0, 1].
 
 Design choices:
@@ -25,6 +25,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from agent.state import ReportOutput
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -161,9 +162,11 @@ Output only a JSON object matching this schema — no prose outside the JSON:
 @functools.lru_cache(maxsize=1)
 def _get_eval_llm():
     """Lazily construct the evaluation LLM to avoid import-time side effects."""
-    from langchain_openai import ChatOpenAI  # noqa: PLC0415
+    from langchain.chat_models import init_chat_model  # noqa: PLC0415
 
-    return ChatOpenAI(model="gpt-4o", temperature=0).with_structured_output(EvalScores)
+    from config.settings import settings  # noqa: PLC0415
+
+    return init_chat_model(settings.default_model, temperature=0).with_structured_output(EvalScores)
 
 
 # ──────────────────────── Report Formatting Helpers ──────────────────────────
@@ -217,10 +220,10 @@ async def evaluate_report(
     query: str,
     report: ReportOutput,
     *,
-    timeout_seconds: float = 90.0,
+    timeout_seconds: float = settings.evaluator_timeout_seconds,
 ) -> EvalScores:
     """
-    Evaluate a research report using GPT-4o as the judge.
+    Evaluate a research report using the primary LLM (gpt-5) as the judge.
 
     Args:
         query:           The original natural-language research query.
@@ -249,58 +252,3 @@ async def evaluate_report(
 
     result = await asyncio.wait_for(llm.ainvoke(prompt), timeout=timeout_seconds)
     return result  # type: ignore[return-value]
-
-
-# ──────────────────────── Optional DeepEval Integration ──────────────────────
-
-
-async def evaluate_with_deepeval(
-    query: str,
-    report: ReportOutput,
-) -> dict[str, Any] | None:
-    """
-    Optional DeepEval-based evaluation (RAGAs-style metrics).
-
-    Returns None if deepeval is not configured or an error occurs.
-    The benchmark runner falls back to evaluate_report() in that case.
-    """
-    try:
-        from deepeval import evaluate  # noqa: PLC0415
-        from deepeval.metrics import (  # noqa: PLC0415
-            AnswerRelevancyMetric,
-            FaithfulnessMetric,
-        )
-        from deepeval.test_case import LLMTestCase  # noqa: PLC0415
-    except ImportError:
-        logger.debug("deepeval not available — skipping DeepEval evaluation")
-        return None
-
-    try:
-        report_text = _build_report_text(report)
-        sources = [src.exact_snippet for src in report.sources[:20]]
-
-        test_case = LLMTestCase(
-            input=query,
-            actual_output=report_text,
-            retrieval_context=sources,
-        )
-
-        metrics = [FaithfulnessMetric(threshold=0.7), AnswerRelevancyMetric(threshold=0.7)]
-
-        # DeepEval's evaluate() is synchronous — run in thread pool
-        result: Any = await asyncio.to_thread(evaluate, [test_case], metrics)  # type: ignore
-
-        return {
-            "deepeval_results": [
-                {
-                    "metric": m.__class__.__name__,
-                    "score": getattr(m, "score", None),
-                    "passed": getattr(m, "is_successful", lambda: None)(),
-                }
-                for m in metrics
-            ],
-            "raw": result,
-        }
-    except Exception as exc:
-        logger.warning("DeepEval evaluation failed: %s", exc)
-        return None

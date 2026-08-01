@@ -5,16 +5,7 @@ LangChain callback handler that accumulates token usage and estimated USD cost
 across multiple LLM calls within a single agent run.
 
 Attach one TokenCostCallback instance to a run and read .summary when the
-run completes.  Handles both OpenAI and Anthropic token-usage response shapes.
-
-Usage::
-
-    from utils.callbacks import TokenCostCallback
-
-    cb = TokenCostCallback()
-    result = await llm.ainvoke(prompt, config={"callbacks": [cb]})
-    print(cb.summary)
-    # {"total_input_tokens": 1234, "total_output_tokens": 567, "total_cost_usd": 0.003...}
+run completes.
 """
 
 from __future__ import annotations
@@ -108,9 +99,8 @@ class TokenCostCallback(BaseCallbackHandler):
         """
         Extract (input_tokens, output_tokens) from an LLMResult.
 
-        Handles three common response shapes:
-          • OpenAI: llm_output["token_usage"]["prompt_tokens"] / "completion_tokens"
-          • Anthropic: llm_output["usage"]["input_tokens"] / "output_tokens"
+        Handles common response shapes:
+          • Standard: llm_output["token_usage"] or llm_output["usage"]
           • Fallback: generation-level generation_info (some older adapters)
         """
         usage: dict[str, Any] = {}
@@ -130,11 +120,11 @@ class TokenCostCallback(BaseCallbackHandler):
                 if usage:
                     break
 
-        # OpenAI keys
+        # Standard prompt/completion keys
         input_tokens = usage.get("prompt_tokens", 0)
         output_tokens = usage.get("completion_tokens", 0)
 
-        # Anthropic keys (override if present and non-zero)
+        # Alternative input/output keys fallback
         if not input_tokens:
             input_tokens = usage.get("input_tokens", 0)
         if not output_tokens:
@@ -145,10 +135,12 @@ class TokenCostCallback(BaseCallbackHandler):
     @staticmethod
     def _extract_model_name(response: LLMResult, kwargs: dict[str, Any]) -> str:
         """Best-effort model name extraction for cost lookup."""
+        from config.settings import settings
+
         if response.llm_output:
             name = response.llm_output.get("model_name") or response.llm_output.get("model", "")
             if name:
                 return name
         # Some providers embed model name in invocation params
         invocation = kwargs.get("invocation_params", {})
-        return invocation.get("model", invocation.get("model_name", "gpt-4o"))
+        return invocation.get("model", invocation.get("model_name", settings.default_model))

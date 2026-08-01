@@ -21,7 +21,7 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import cast
+from typing import Any, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +35,7 @@ from slowapi.util import get_remote_address
 from agent import __version__
 from agent.graph import graph
 from agent.state import RunMetadata
+from config.settings import settings
 from observability.tracer import get_tracer
 from utils.context import bind_run_id
 from utils.cost_estimator import estimate_cost
@@ -190,6 +191,17 @@ async def _stream_graph_events(
         A final "writer_completed" sentinel is NOT yielded — callers check
         the graph state after this generator exhausts.
     """
+    MAIN_NODES = {
+        "classifier",
+        "planner",
+        "supervisor",
+        "web_agent",
+        "arxiv_agent",
+        "github_agent",
+        "critic",
+        "synthesizer",
+        "writer",
+    }
     while True:
         async for event in graph.astream_events(
             input_payload,
@@ -197,26 +209,194 @@ async def _stream_graph_events(
             config=thread_config,
         ):
             kind = event["event"]
+            now_iso = time.strftime("%H:%M:%S")
 
-            if kind == "on_chain_start":
-                yield sse({"type": "node_start", "node": event["name"]})
+            if kind == "on_chain_start" and event["name"] in MAIN_NODES:
+                node_name = event["name"]
+                raw_input = event.get("data", {}).get("input", {})
+                if isinstance(raw_input, dict):
+                    clean_in = {
+                        k: v
+                        for k, v in raw_input.items()
+                        if k
+                        in (
+                            "query",
+                            "subquestions",
+                            "profile",
+                            "run_id",
+                            "query_difficulty",
+                            "relevant_sources",
+                            "iteration_count",
+                        )
+                        and v
+                    }
+                    input_str = json.dumps(clean_in or raw_input, indent=2, default=str)
+                else:
+                    input_str = str(raw_input)
+                yield sse(
+                    {
+                        "type": "node_start",
+                        "node": node_name,
+                        "input": input_str,
+                        "timestamp": now_iso,
+                    }
+                )
+
+            elif kind == "on_chain_end" and event["name"] in MAIN_NODES:
+                node_name = event["name"]
+                output_obj = event.get("data", {}).get("output", {})
+                output_str = ""
+                if isinstance(output_obj, dict):
+                    clean_out: dict[str, Any] = {}
+                    for k, v in output_obj.items():
+                        if k == "findings" and isinstance(v, list):
+                            clean_findings: list[Any] = []
+                            for f in v:
+                                if hasattr(f, "model_dump"):
+                                    clean_findings.append(f.model_dump())
+                                elif isinstance(f, dict):
+                                    clean_findings.append(f)
+                                else:
+                                    clean_findings.append(str(f))
+                            clean_out["findings"] = clean_findings
+                        elif hasattr(v, "model_dump"):
+                            clean_out[k] = v.model_dump()
+                        elif isinstance(v, (dict, list, str, int, float, bool)):
+                            clean_out[k] = v
+                        else:
+                            clean_out[k] = str(v)
+                    output_str = json.dumps(clean_out, indent=2, default=str)
+                elif hasattr(output_obj, "model_dump"):
+                    output_str = json.dumps(output_obj.model_dump(), indent=2, default=str)
+                else:
+                    output_str = str(output_obj)
+
+                yield sse(
+                    {
+                        "type": "node_end",
+                        "node": node_name,
+                        "output": output_str,
+                        "timestamp": now_iso,
+                    }
+                )
 
             elif kind == "on_tool_start":
+                tool_name = event.get("name", "tool")
+                raw_input = event.get("data", {}).get("input", {})
+                if isinstance(raw_input, dict):
+                    input_str = json.dumps(raw_input, indent=2)
+                else:
+                    input_str = str(raw_input)
                 yield sse(
                     {
                         "type": "tool_call",
-                        "tool": event["name"],
-                        "input": str(event.get("data", {}).get("input", ""))[:200],
+                        "tool": tool_name,
+                        "input": input_str,
+                        "timestamp": now_iso,
                     }
                 )
 
             elif kind == "on_tool_end":
+                tool_name = event.get("name", "tool")
                 output = event.get("data", {}).get("output", [])
+                count = len(output) if isinstance(output, list) else (1 if output else 0)
+
+                # Format full output preview text for scrollable UI cards
+                items_detail = []
+                if isinstance(output, list):
+                    for idx, item in enumerate(output, 1):
+                        if isinstance(item, dict):
+                            t = (
+                                item.get("title")
+                                or item.get("name")
+                                or item.get("url")
+                                or f"Item {idx}"
+                            )
+                            s = (
+                                item.get("snippet")
+                                or item.get("abstract")
+                                or item.get("description")
+                                or ""
+                            )
+                            u = item.get("url", "")
+                            items_detail.append(f"[{idx}] {t}\n    URL: {u}\n    Snippet: {s}")
+                        elif hasattr(item, "model_dump"):
+                            d = item.model_dump()
+                            t = d.get("title") or d.get("name") or d.get("url") or f"Item {idx}"
+                            s = d.get("snippet") or d.get("abstract") or d.get("description") or ""
+                            u = d.get("url", "")
+                            items_detail.append(f"[{idx}] {t}\n    URL: {u}\n    Snippet: {s}")
+                        else:
+                            items_detail.append(f"[{idx}] {str(item)}")
+                elif isinstance(output, dict):
+                    items_detail.append(json.dumps(output, indent=2))
+                else:
+                    items_detail.append(str(output))
+
+                full_output_str = "\n\n".join(items_detail)
+
                 yield sse(
                     {
                         "type": "tool_result",
-                        "tool": event["name"],
-                        "count": len(output) if isinstance(output, list) else 1,
+                        "tool": tool_name,
+                        "count": count,
+                        "full_output": full_output_str,
+                        "timestamp": now_iso,
+                    }
+                )
+
+            elif kind == "on_chat_model_start":
+                model_name = event.get("name", "LLM")
+                data = event.get("data", {})
+                input_msgs = data.get("input", {}).get("messages", []) or data.get("messages", [])
+
+                msg_list = []
+                if isinstance(input_msgs, list):
+                    for m in input_msgs:
+                        if isinstance(m, list):
+                            for sub in m:
+                                content = getattr(sub, "content", str(sub))
+                                role = getattr(sub, "type", "user")
+                                msg_list.append(f"[{role.upper()}]\n{content}")
+                        elif hasattr(m, "content"):
+                            role = getattr(m, "type", "user")
+                            msg_list.append(f"[{role.upper()}]\n{m.content}")
+                        elif isinstance(m, dict):
+                            role = m.get("role", "user")
+                            content = m.get("content", "")
+                            msg_list.append(f"[{role.upper()}]\n{content}")
+                        else:
+                            msg_list.append(str(m))
+                formatted_prompt = "\n\n".join(msg_list) if msg_list else str(input_msgs)
+                yield sse(
+                    {
+                        "type": "llm_start",
+                        "model": model_name,
+                        "prompt": formatted_prompt,
+                        "timestamp": now_iso,
+                    }
+                )
+
+            elif kind == "on_chat_model_end":
+                model_name = event.get("name", "LLM")
+                data = event.get("data", {})
+                output_obj = data.get("output", {})
+
+                if hasattr(output_obj, "content") and output_obj.content:
+                    resp_str = str(output_obj.content)
+                elif hasattr(output_obj, "model_dump"):
+                    resp_str = json.dumps(output_obj.model_dump(), indent=2)
+                elif isinstance(output_obj, dict):
+                    resp_str = json.dumps(output_obj, indent=2)
+                else:
+                    resp_str = str(output_obj)
+
+                yield sse(
+                    {
+                        "type": "llm_end",
+                        "model": model_name,
+                        "response": resp_str,
+                        "timestamp": now_iso,
                     }
                 )
 
@@ -226,11 +406,11 @@ async def _stream_graph_events(
                     yield sse({"type": "token", "content": chunk.content})
 
             elif kind == "on_chain_end" and event["name"] == "writer":
-                yield sse({"type": "complete", "run_id": run_id})
+                yield sse({"type": "complete", "run_id": run_id, "timestamp": now_iso})
 
-        # Event stream ended. Check if paused at planner for auto-resume.
+        # Event stream ended. Check if paused at supervisor for auto-resume.
         state_snapshot = graph.get_state(thread_config)
-        if state_snapshot and state_snapshot.next == ("planner",):
+        if state_snapshot and state_snapshot.next == ("supervisor",):
             values = state_snapshot.values
             meta = values.get("run_metadata")
             iteration = meta.iteration_count if meta else 0
@@ -238,7 +418,7 @@ async def _stream_graph_events(
                 # Auto-resume follow-up iterations
                 input_payload = None
                 continue
-        # Either not paused at planner, or iteration == 0 (needs HITL) — stop streaming
+        # Either not paused at supervisor, or iteration == 0 (needs HITL) — stop streaming
         break
 
 
@@ -251,8 +431,8 @@ async def stream_research(payload: ResearchRequest, request: Request, tracer=Dep
     """
     Start a new research run and stream SSE events.
 
-    The graph is compiled with interrupt_before=["planner"], so after the
-    classifier runs, the stream pauses and emits a hitl_interrupt event.
+    The graph is compiled with interrupt_before=["supervisor"], so after the
+    classifier and planner run, the stream pauses and emits a hitl_interrupt event.
     The client must call POST /research/approve to resume.
     """
     run_id = str(uuid.uuid4())
@@ -289,22 +469,32 @@ async def stream_research(payload: ResearchRequest, request: Request, tracer=Dep
                 if '"type": "complete"' in chunk:
                     writer_completed = True
 
-            # If paused at planner on first iteration, emit HITL interrupt
+            # If paused at supervisor on first iteration, emit HITL interrupt
             state_snapshot = graph.get_state(thread_config)
-            if state_snapshot and state_snapshot.next == ("planner",):
+            if state_snapshot and state_snapshot.next == ("supervisor",):
                 values = state_snapshot.values
                 meta = values.get("run_metadata")
                 iteration = meta.iteration_count if meta else 0
 
                 if iteration == 0:
                     difficulty = values.get("query_difficulty", "narrow")
-                    n_questions = {"narrow": 3, "broad": 6, "ambiguous": 4}.get(difficulty, 4)
-                    estimated_cost = estimate_cost("gpt-4o", n_questions * 800, n_questions * 400)
+                    sources = values.get("relevant_sources", ["web"])
+                    subquestions = values.get("subquestions", [])
+                    n_questions = len(subquestions) or {
+                        "narrow": 3,
+                        "broad": 6,
+                        "ambiguous": 4,
+                    }.get(difficulty, 4)
+                    estimated_cost = estimate_cost(
+                        settings.default_model, n_questions * 800, n_questions * 400
+                    )
                     yield sse(
                         {
                             "type": "hitl_interrupt",
                             "thread_id": run_id,
                             "query_difficulty": difficulty,
+                            "relevant_sources": sources,
+                            "subquestions": subquestions,
                             "estimated_subquestions": n_questions,
                             "estimated_cost_usd": round(estimated_cost, 4),
                             "message": "Plan ready for approval. POST /research/approve to continue.",
@@ -335,10 +525,10 @@ async def approve_plan(request: ApproveRequest, tracer=Depends(get_tracer)):
             detail=f"Thread '{request.thread_id}' not found.",
         )
 
-    if state_snapshot.next != ("planner",):
+    if state_snapshot.next != ("supervisor",):
         raise HTTPException(
             status_code=409,
-            detail=f"Thread is not paused at planner. Current next: {state_snapshot.next}",
+            detail=f"Thread is not paused at supervisor. Current next: {state_snapshot.next}",
         )
 
     if not request.approved:
@@ -530,7 +720,6 @@ async def health_deep():
     # 3. API key configuration
     keys_configured = {
         "OPENAI_API_KEY": bool(os.environ.get("OPENAI_API_KEY")),
-        "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "TAVILY_API_KEY": bool(os.environ.get("TAVILY_API_KEY")),
     }
     all_keys_set = all(keys_configured.values())

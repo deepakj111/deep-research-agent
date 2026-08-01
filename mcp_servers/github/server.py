@@ -3,7 +3,7 @@ import os
 import sys
 
 import httpx
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 from starlette.responses import JSONResponse
 
 # Ensure the shared directory is on sys.path for imports
@@ -16,9 +16,19 @@ mcp = FastMCP("github-server")
 cache = CacheLayer(db_path=".github_cache.db", ttl_seconds=7200)
 
 
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=15.0)
+    return _http_client
+
+
 @mcp.tool()
 @require_auth
-async def search_repos(ctx, topic: str, max_repos: int = 5) -> list[dict]:
+async def search_repos(ctx: Context, topic: str, max_repos: int = 5) -> list[dict]:
     """
     Search GitHub repositories by topic/keyword.
 
@@ -39,20 +49,19 @@ async def search_repos(ctx, topic: str, max_repos: int = 5) -> list[dict]:
     if github_token:
         headers["Authorization"] = f"Bearer {github_token}"
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            "https://api.github.com/search/repositories",
-            params={
-                "q": topic,
-                "sort": "stars",
-                "order": "desc",
-                "per_page": max_repos,
-            },
-            headers=headers,
-            timeout=15.0,
-        )
-        response.raise_for_status()
-        items = response.json().get("items", [])
+    client = _get_http_client()
+    response = await client.get(
+        "https://api.github.com/search/repositories",
+        params={
+            "q": topic,
+            "sort": "stars",
+            "order": "desc",
+            "per_page": max_repos,
+        },
+        headers=headers,
+    )
+    response.raise_for_status()
+    items = response.json().get("items", [])
 
     repos = [
         {

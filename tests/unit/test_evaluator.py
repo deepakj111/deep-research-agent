@@ -285,7 +285,7 @@ class TestTokenCostCallback:
         mock_result = MagicMock(spec=LLMResult)
         mock_result.llm_output = {
             "token_usage": {"prompt_tokens": 1000, "completion_tokens": 500},
-            "model_name": "gpt-4o",
+            "model_name": "gpt-5",
         }
         mock_result.generations = []
         cb.on_llm_end(mock_result, run_id=run_id)
@@ -294,7 +294,7 @@ class TestTokenCostCallback:
         assert cb.total_output_tokens == 500
         assert cb.total_cost_usd > 0
 
-    def test_accumulates_anthropic_token_counts(self) -> None:
+    def test_accumulates_generic_usage_token_counts(self) -> None:
         from unittest.mock import MagicMock
         from uuid import uuid4
 
@@ -308,7 +308,7 @@ class TestTokenCostCallback:
         mock_result = MagicMock(spec=LLMResult)
         mock_result.llm_output = {
             "usage": {"input_tokens": 800, "output_tokens": 300},
-            "model": "claude-sonnet-4-5",
+            "model": "gpt-5-mini",
         }
         mock_result.generations = []
         cb.on_llm_end(mock_result, run_id=run_id)
@@ -329,7 +329,7 @@ class TestTokenCostCallback:
         mock_result = MagicMock(spec=LLMResult)
         mock_result.llm_output = {
             "token_usage": {"prompt_tokens": 500, "completion_tokens": 200},
-            "model_name": "gpt-4o-mini",
+            "model_name": "gpt-5-mini",
         }
         mock_result.generations = []
         cb.on_llm_end(mock_result, run_id=run_id)

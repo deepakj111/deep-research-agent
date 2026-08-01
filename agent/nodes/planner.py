@@ -12,8 +12,6 @@ from config.profiles import load_profile
 from config.settings import settings
 from utils.callbacks import TokenCostCallback
 
-_LLM_TIMEOUT_SECONDS = 90.0  # planner gets more time due to tenacity retries
-
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 with open(_PROMPTS_DIR / "planner.yaml") as f:
@@ -113,7 +111,7 @@ async def run(state: ResearchState) -> dict:
             ],
             callbacks=[cb],
         ),
-        timeout=_LLM_TIMEOUT_SECONDS,
+        timeout=settings.planner_timeout_seconds,
     )
 
     # ── Accumulate cost into run metadata ─────────────────────────────────
