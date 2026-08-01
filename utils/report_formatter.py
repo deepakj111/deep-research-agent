@@ -315,6 +315,22 @@ def export_to_pdf(report: ReportOutput) -> bytes:
         pdf.multi_cell(0, 5.5, safe_str(text), align="L")
         pdf.ln(2)
 
+    def bullet_paragraph(text: str):
+        pdf.set_font("Helvetica", "", 9.5)
+        pdf.set_text_color(31, 41, 55)
+        pdf.set_x(24)
+        pdf.multi_cell(0, 5.2, safe_str(f"* {text}"), align="L")
+        pdf.set_x(20)
+        pdf.ln(1.5)
+
+    def callout_box(text: str):
+        pdf.set_font("Helvetica", "B", 9.5)
+        pdf.set_text_color(30, 64, 175)
+        pdf.set_fill_color(239, 246, 255)
+        pdf.multi_cell(0, 6, safe_str(f"  {text}"), align="L", fill=True)
+        pdf.ln(2.5)
+        pdf.set_text_color(30, 30, 30)
+
     # ── Title ──────────────────────────────────────────────────────────────────
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(30, 64, 175)  # deep blue
@@ -352,7 +368,11 @@ def export_to_pdf(report: ReportOutput) -> bytes:
             b = block.strip()
             if not b:
                 continue
-            if b.startswith("#"):
+            if b.startswith("- ") or b.startswith("* "):
+                bullet_paragraph(b[2:].strip())
+            elif "Core Insight" in b or "💡" in b:
+                callout_box(b)
+            elif b.startswith("#"):
                 clean_h = b.lstrip("#").strip()
                 subheading(clean_h)
             elif b.startswith("**") and b.endswith("**"):

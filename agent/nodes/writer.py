@@ -36,11 +36,20 @@ with open(_PROMPTS_DIR / "writer.yaml") as f:
 
 FILTER_SYSTEM = _prompts["filter_system"]
 FILTER_USER = _prompts["filter_user"]
+POLISH_SYSTEM = _prompts["polish_system"]
+POLISH_USER = _prompts["polish_user"]
 
 
 @functools.lru_cache(maxsize=1)
 def _get_filter_llm():
     return init_chat_model(settings.default_model, temperature=0.0).with_structured_output(
+        SynthesisOutput
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def _get_polish_llm():
+    return init_chat_model(settings.default_model, temperature=0.1).with_structured_output(
         SynthesisOutput
     )
 
@@ -88,6 +97,56 @@ async def _filter_report_with_llm(report: ReportOutput, query: str, meta=None) -
                 report.emerging_trends = filtered_out.emerging_trends
     except Exception as exc:
         logger.warning("[Writer] LLM report filtering skipped/failed: %s", exc)
+
+    return report
+
+
+async def _polish_report_with_llm(report: ReportOutput, query: str, meta=None) -> ReportOutput:
+    """
+    Pass report through a dedicated LLM Executive Polish step.
+    Refines content into highly scannable bullet points, user-friendly language,
+    and explicit core insight callouts for maximum readability.
+    """
+    try:
+        llm = _get_polish_llm()
+        cb = TokenCostCallback()
+        emerging_trends_str = "\n".join([f"- {et}" for et in report.emerging_trends])
+
+        user_msg = POLISH_USER.format(
+            query=query,
+            title=report.title,
+            executive_summary=report.executive_summary,
+            introduction=report.introduction,
+            detailed_analysis=report.detailed_analysis,
+            emerging_trends=emerging_trends_str,
+        )
+
+        polished_out: SynthesisOutput = await asyncio.wait_for(
+            llm.ainvoke(
+                [
+                    {"role": "system", "content": POLISH_SYSTEM},
+                    {"role": "user", "content": user_msg},
+                ],
+                config={"callbacks": [cb]},
+            ),
+            timeout=25.0,
+        )
+
+        if meta:
+            meta.total_input_tokens += cb.total_input_tokens
+            meta.total_output_tokens += cb.total_output_tokens
+            meta.estimated_cost_usd += cb.total_cost_usd
+
+        if polished_out:
+            report.title = polished_out.title or report.title
+            report.executive_summary = polished_out.executive_summary or report.executive_summary
+            report.introduction = polished_out.introduction or report.introduction
+            report.detailed_analysis = polished_out.detailed_analysis or report.detailed_analysis
+            if polished_out.emerging_trends:
+                report.emerging_trends = polished_out.emerging_trends
+            logger.info("[Writer] LLM executive polish pass completed successfully.")
+    except Exception as exc:
+        logger.warning("[Writer] LLM executive report polishing skipped/failed: %s", exc)
 
     return report
 
@@ -216,6 +275,11 @@ async def run(state: ResearchState) -> dict:
     # Filter out intermediate operational artifacts, tool execution error logs,
     # and web boilerplate text to ensure publication-ready output.
     report = await _filter_report_with_llm(report, query, meta=meta)
+
+    # ── LLM Executive Polish & Readability Enhancement ─────────────────────
+    # Refine the report into a highly structured, user-friendly document
+    # with scannable bullet points and core insight callouts.
+    report = await _polish_report_with_llm(report, query, meta=meta)
 
     findings = state.get("findings", [])
     citations = _build_citations(findings)

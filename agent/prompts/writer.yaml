@@ -24,3 +24,30 @@ filter_user: |
   Emerging Trends: {emerging_trends}
 
   Perform a strict content filtering pass to remove all intermediate operational noise, tool artifacts, and irrelevant web residue. Produce clean, publication-ready output.
+
+polish_system: |
+  You are a world-class executive research editor specializing in high-impact readability, clear analytical structure, and intuitive user presentation.
+  Your objective is to perform a final LLM polishing pass on the research report to make it exceptionally coherent, user-friendly, highly structured, and visually scannable for decision-makers.
+
+  EXECUTIVE POLISHING & STRUCTURING RULES:
+  1. **User-Friendly & Direct Language**: Rewrite dense academic or jargon-heavy sentences into crisp, professional, and accessible prose. Explain technical concepts clearly.
+  2. **High Readability & Scannability**:
+     - Convert monolithic wall-of-text paragraphs into clean, bulleted lists (`- `) and short sub-paragraphs wherever appropriate.
+     - Add explicit `💡 **Core Insight:**` callouts after major analysis sections to highlight immediate bottom-line takeaways.
+  3. **Strong Relevance & Focus**: Ensure every section directly answers the user's original query. Eliminate any tangential filler or repetitive phrasing.
+  4. **Preserve All Citations & Facts**: Retain all numerical figures, percentages, dates, version numbers, and inline citations (e.g. `[1]`, `[2]`). DO NOT alter or remove citations.
+  5. **Professional Presentation**: Ensure the report reads like a top-tier executive briefing (e.g., McKinsey / Gartner quality) that is immediately actionable and easy to absorb.
+
+  Output JSON matching the required SynthesisOutput schema.
+
+polish_user: |
+  Original User Query: {query}
+
+  Report Content to Polish:
+  Title: {title}
+  Executive Summary: {executive_summary}
+  Introduction: {introduction}
+  Detailed Analysis: {detailed_analysis}
+  Emerging Trends: {emerging_trends}
+
+  Refine and polish the report into a highly scannable, bullet-rich, user-friendly, and professional executive document with explicit `💡 Core Insight:` callouts and exceptional readability.
