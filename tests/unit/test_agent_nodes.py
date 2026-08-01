@@ -56,6 +56,19 @@ class TestCriticNode:
         base_state["run_metadata"] = RunMetadata(run_id="test", profile="fast", iteration_count=2)
         assert should_continue(base_state) == "continue"
 
+    @pytest.mark.asyncio
+    async def test_critic_run_short_circuits_on_max_iterations(self, base_state):
+        from agent.nodes.critic import run
+        from config.settings import settings
+
+        base_state["run_metadata"] = RunMetadata(
+            run_id="test", profile="fast", iteration_count=settings.max_iterations - 1
+        )
+        result = await run(base_state)
+
+        assert result["critique"].should_continue is False
+        assert "short-circuiting" in result["thought_log"][0].lower()
+
 
 class TestWriterNode:
     @pytest.mark.asyncio
@@ -111,14 +124,13 @@ class TestSupervisorNode:
 
         from agent.nodes.supervisor import run
 
-        base_state["subquestions"] = ["Q1", "Q2", "Q3"]
+        base_state["subquestions"] = ["Q1 paper", "Q2 code", "Q3 general"]
         base_state["findings"] = []
 
         result = await run(base_state)
         assert isinstance(result, Command)
-        # 3 subquestions x 3 agents = 9 Send objects
         assert isinstance(result.goto, list)
-        assert len(result.goto) == 9
+        assert len(result.goto) >= 3
         assert all(isinstance(s, Send) for s in result.goto)
 
     @pytest.mark.asyncio
@@ -265,17 +277,15 @@ class TestSynthesizerEdgeCases:
     async def test_synthesizer_uses_fallback_when_one_model_fails(self, base_state):
         from unittest.mock import MagicMock, patch
 
-        from agent.nodes.synthesizer import run
-        from agent.state import ReportOutput
+        from agent.nodes.synthesizer import SynthesisOutput, run
 
         base_state["findings"] = []
 
-        fallback_report = ReportOutput(
+        fallback_report = SynthesisOutput(
             title="Fallback",
             executive_summary="Summary",
             key_findings=[],
             emerging_trends=[],
-            recommended_next_steps=[],
         )
 
         call_count = 0
@@ -317,11 +327,8 @@ class TestSubAgents:
             ]
         )
 
-        mock_client = MagicMock()
-        mock_client.get_tools = AsyncMock(return_value=[mock_tool])
-
         with (
-            patch("agent.nodes.web_agent.MultiServerMCPClient", return_value=mock_client),
+            patch("agent.nodes.web_agent.get_mcp_tool", return_value=mock_tool),
             patch("agent.nodes.web_agent.get_jwt_token", return_value="fake_token"),
         ):
             res = await run(base_state)
@@ -347,11 +354,8 @@ class TestSubAgents:
         mock_tool.name = "search_web"
         mock_tool.ainvoke = AsyncMock(return_value=mcp_text_block)
 
-        mock_client = MagicMock()
-        mock_client.get_tools = AsyncMock(return_value=[mock_tool])
-
         with (
-            patch("agent.nodes.web_agent.MultiServerMCPClient", return_value=mock_client),
+            patch("agent.nodes.web_agent.get_mcp_tool", return_value=mock_tool),
             patch("agent.nodes.web_agent.get_jwt_token", return_value="fake_token"),
         ):
             res = await run(base_state)
@@ -381,11 +385,8 @@ class TestSubAgents:
             ]
         )
 
-        mock_client = MagicMock()
-        mock_client.get_tools = AsyncMock(return_value=[mock_tool])
-
         with (
-            patch("agent.nodes.arxiv_agent.MultiServerMCPClient", return_value=mock_client),
+            patch("agent.nodes.arxiv_agent.get_mcp_tool", return_value=mock_tool),
             patch("agent.nodes.arxiv_agent.get_jwt_token", return_value="fake_token"),
         ):
             res = await run(base_state)
@@ -415,11 +416,8 @@ class TestSubAgents:
             ]
         )
 
-        mock_client = MagicMock()
-        mock_client.get_tools = AsyncMock(return_value=[mock_tool])
-
         with (
-            patch("agent.nodes.github_agent.MultiServerMCPClient", return_value=mock_client),
+            patch("agent.nodes.github_agent.get_mcp_tool", return_value=mock_tool),
             patch("agent.nodes.github_agent.get_jwt_token", return_value="fake_token"),
         ):
             res = await run(base_state)

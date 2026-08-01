@@ -1,5 +1,8 @@
+import asyncio
 import json
 from typing import Any
+
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 
 def parse_mcp_raw_results(raw: Any) -> list[dict]:
@@ -48,3 +51,56 @@ def parse_mcp_raw_results(raw: Any) -> list[dict]:
                 return [r for r in raw[key] if isinstance(r, dict)]
 
     return []
+
+
+_mcp_cache: dict[str, tuple[MultiServerMCPClient, list[Any]]] = {}
+_cache_lock: asyncio.Lock | None = None
+
+
+def _get_cache_lock() -> asyncio.Lock:
+    global _cache_lock
+    if _cache_lock is None:
+        _cache_lock = asyncio.Lock()
+    return _cache_lock
+
+
+async def get_mcp_tool(server_name: str, url: str, jwt_token: str, tool_name: str) -> Any:
+    """
+    Get a specific tool from an MCP server using a cached client instance.
+
+    Reuses existing MultiServerMCPClient connections to avoid establishing new
+    SSE handshakes and tool schema discovery on every subquestion execution.
+    """
+    cache_key = f"{server_name}:{url}"
+    lock = _get_cache_lock()
+
+    async with lock:
+        if cache_key in _mcp_cache:
+            _, tools = _mcp_cache[cache_key]
+            tool = next((t for t in tools if getattr(t, "name", None) == tool_name), None)
+            if tool is not None:
+                return tool
+
+        # Connect and discover tools
+        client = MultiServerMCPClient(
+            {
+                server_name: {
+                    "url": url,
+                    "transport": "sse",
+                    "headers": {"Authorization": f"Bearer {jwt_token}"},
+                }
+            }
+        )
+        tools = await client.get_tools()
+        _mcp_cache[cache_key] = (client, tools)
+
+        tool = next((t for t in tools if getattr(t, "name", None) == tool_name), None)
+        if tool is not None:
+            return tool
+        raise RuntimeError(f"Tool '{tool_name}' not found on MCP server '{server_name}'")
+
+
+def invalidate_mcp_cache(server_name: str, url: str) -> None:
+    """Invalidate cache entry for a server if connection drops."""
+    cache_key = f"{server_name}:{url}"
+    _mcp_cache.pop(cache_key, None)

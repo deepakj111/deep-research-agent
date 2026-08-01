@@ -20,9 +20,14 @@ try:
         "ReportOutput",
         "RunMetadata",
     ]
-    if hasattr(_serde_jsonplus, "_ALLOWED_MSG_PACK_TYPES"):
-        for _cls in _state_classes:
-            _serde_jsonplus._ALLOWED_MSG_PACK_TYPES.add(("agent.state", _cls))
+    for _cls in _state_classes:
+        tup = ("agent.state", _cls)
+        if hasattr(_serde_jsonplus, "_ALLOWED_MSG_PACK_TYPES"):
+            _serde_jsonplus._ALLOWED_MSG_PACK_TYPES.add(tup)
+        if hasattr(_serde_jsonplus, "allowed_msgpack_modules"):
+            _serde_jsonplus.allowed_msgpack_modules.add(tup)
+        if hasattr(_serde_jsonplus, "_allowed_msgpack_modules"):
+            _serde_jsonplus._allowed_msgpack_modules.add(tup)
 except Exception:
     pass
 
@@ -99,9 +104,13 @@ class ContradictionRecord(BaseModel):
 class ReportOutput(BaseModel):
     title: str
     executive_summary: str
+    introduction: str = Field(default="", description="Contextual background and research scope")
+    detailed_analysis: str = Field(
+        default="",
+        description="Comprehensive multi-section narrative breakdown with analytical prose and data synthesis",
+    )
     key_findings: list[Finding]
     emerging_trends: list[str]
-    recommended_next_steps: list[str]
     model_disagreements: list[str] = Field(default_factory=list)
     contradictions: list[ContradictionRecord] = Field(default_factory=list)
     sources: list[Citation] = Field(default_factory=list)

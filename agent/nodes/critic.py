@@ -61,6 +61,52 @@ async def run(state: ResearchState) -> dict:
     meta = state.get("run_metadata")
     iteration_count = meta.iteration_count if meta else 0
 
+    profile_name = state.get("profile", "fast")
+
+    try:
+        from config.profiles import load_profile  # noqa: PLC0415
+
+        max_iters = load_profile(profile_name).get("max_iterations", settings.max_iterations)
+    except Exception:
+        max_iters = settings.max_iterations
+
+    total_results = (
+        sum(len(f.web_results) for f in all_findings)
+        + sum(len(f.papers) for f in all_findings)
+        + sum(len(f.repos) for f in all_findings)
+    )
+
+    # Short-circuit LLM call on terminal iteration, sufficient results count, or budget limit
+    if (
+        iteration_count + 1 >= max_iters
+        or total_results >= 10
+        or (meta and meta.estimated_cost_usd >= settings.max_cost_per_run_usd)
+    ):
+        short_circuit_critique = CritiqueOutput(
+            coverage_score=1.0,
+            recency_score=1.0,
+            depth_score=1.0,
+            source_diversity_score=1.0,
+            missing_areas=[],
+            should_continue=False,
+            reasoning="Max iterations, sufficient findings count, or budget limit reached.",
+        )
+        updated_meta = RunMetadata(
+            **(
+                meta.model_dump()
+                if meta
+                else {"run_id": state.get("run_id", ""), "profile": profile_name}
+            ),
+        )
+        updated_meta.iteration_count = iteration_count + 1
+        return {
+            "critique": short_circuit_critique,
+            "run_metadata": updated_meta,
+            "thought_log": [
+                "[Critic] Terminal iteration / budget / findings threshold reached — short-circuiting to SYNTHESIZE"
+            ],
+        }
+
     cb = TokenCostCallback()
     critique: CritiqueOutput = await asyncio.wait_for(  # type: ignore[assignment]
         _get_llm().ainvoke(
@@ -73,20 +119,23 @@ async def run(state: ResearchState) -> dict:
                 repo_count=sum(len(f.repos) for f in all_findings),
                 errors=[e for f in all_findings for e in f.tool_errors],
                 iteration=iteration_count,
-                max_iterations=settings.max_iterations,
+                max_iterations=max_iters,
             ),
             config={"callbacks": [cb]},
         ),
         timeout=settings.critic_timeout_seconds,
     )
 
+    # Force synthesis if coverage score is high (>=0.75) or total results >= 6
+    if critique.coverage_score >= 0.75 or total_results >= 6:
+        critique.should_continue = False
+
     # Build a new RunMetadata with incremented iteration_count.
-    # Never mutate in place — always return the updated object so LangGraph persists it.
     updated_meta = RunMetadata(
         **(
             meta.model_dump()
             if meta
-            else {"run_id": state.get("run_id", ""), "profile": state.get("profile", "fast")}
+            else {"run_id": state.get("run_id", ""), "profile": profile_name}
         ),
     )
     updated_meta.iteration_count = iteration_count + 1

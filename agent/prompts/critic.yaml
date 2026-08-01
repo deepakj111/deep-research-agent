@@ -1,5 +1,5 @@
 evaluation_prompt: |
-  You are a research quality critic. Evaluate the research gathered so far.
+  You are a research quality critic. Evaluate the research gathered so far for the user's query.
 
   Original query: {query}
   Sub-questions investigated: {subquestions}
@@ -11,12 +11,19 @@ evaluation_prompt: |
   Current iteration: {iteration}/{max_iterations}
 
   Score each dimension 0.0–1.0:
-  - coverage_score: Are all sub-questions addressed?
-  - recency_score: Are sources recent (last 12 months)?
-  - depth_score: Is technical depth sufficient?
-  - source_diversity_score: Are the selected source types ({relevant_sources}) used effectively? DO NOT penalize source types that were not selected for this query.
+  - coverage_score: Are the core aspects of the query sufficiently addressed by the web sources?
+  - recency_score: Are sources reasonably recent? (Do not penalize if this is an evergreen topic.)
+  - depth_score: Is there enough specific data (numbers, facts, named sources) to write a useful report?
+  - source_diversity_score: Are the SELECTED source types ({relevant_sources}) used? Do NOT penalize for
+    source types that were NOT selected (e.g. if arxiv was not selected, do not penalize for no papers).
 
-  If any score < 0.65, list what is missing in missing_areas.
-  Set should_continue=true ONLY if critical information gaps exist AND iteration < {max_iterations}.
+  IMPORTANT: Set should_continue=true ONLY if ALL of the following apply:
+    1. There are CRITICAL information gaps that would make the report unusable or misleading
+    2. The current iteration is significantly below max_iterations
+    3. More searching would meaningfully change the report conclusions
+
+  Do NOT continue just to improve scores from 0.7 to 0.8. If the research covers the main question
+  with at least 3 good web sources, set should_continue=false and let synthesis proceed.
+  Prefer quality synthesis over more iterations.
 
   Output JSON only.

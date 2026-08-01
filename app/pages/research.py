@@ -637,51 +637,121 @@ def _render_new_research():
             ),
             key="query_input",
         )
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            profile = st.selectbox(
-                "Research Depth",
-                ["fast", "deep"],
-                help="**Fast**: 3-5 min, fewer sources. **Deep**: 8-15 min, comprehensive.",
-            )
-        with col2:
-            st.markdown("<br>", unsafe_allow_html=True)
         submitted = st.form_submit_button(
             "🚀 Start Research", type="primary", use_container_width=True
         )
 
     if submitted and query.strip():
-        _run_research(query.strip(), profile)
+        _run_research(query.strip(), profile="fast")
+
+
+def _fetch_formatted_report(run_id: str) -> str:
+    """Fetch the formatted markdown report from the API after completion."""
+    try:
+        resp = httpx.get(
+            f"{AGENT_API_URL}/research/report/{run_id}/markdown",
+            timeout=30.0,
+        )
+        if resp.status_code == 200:
+            return resp.text
+    except Exception:
+        pass
+    return ""
+
+
+def _fetch_pdf_bytes(run_id: str) -> bytes | None:
+    """Fetch the PDF report from the API."""
+    try:
+        resp = httpx.get(
+            f"{AGENT_API_URL}/research/report/{run_id}/pdf",
+            timeout=60.0,
+        )
+        if resp.status_code == 200:
+            return resp.content
+    except Exception:
+        pass
+    return None
+
+
+def _render_final_report(run_id: str, report_ph, run_state: dict) -> None:
+    """Fetch and render the clean formatted report from the API."""
+    md_content = _fetch_formatted_report(run_id)
+    if md_content:
+        run_state["final_report_md"] = md_content
+        report_ph.markdown(md_content)
+    else:
+        # Fallback to accumulated token stream if API fetch fails
+        if run_state.get("accumulated_report"):
+            report_ph.markdown(run_state["accumulated_report"])
+
+
+def _render_download_buttons(run_id: str, run_state: dict) -> None:
+    """Render the report download buttons after a completed run."""
+    report_md = run_state.get("final_report_md") or run_state.get("accumulated_report", "")
+    if not report_md:
+        return
+
+    st.markdown("---")
+    st.markdown("### 📥 Download Report")
+    dl1, dl2 = st.columns(2)
+
+    # Primary: PDF download
+    with dl1:
+        pdf_bytes = _fetch_pdf_bytes(run_id)
+        if pdf_bytes:
+            st.download_button(
+                "📄 Download PDF Report",
+                data=pdf_bytes,
+                file_name=f"research_report_{run_id[:8]}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary",
+            )
+        else:
+            st.button(
+                "📄 PDF Unavailable",
+                disabled=True,
+                use_container_width=True,
+                help="PDF generation requires WeasyPrint to be installed.",
+            )
+
+    # Secondary: Markdown download
+    with dl2:
+        st.download_button(
+            "📝 Download Markdown",
+            data=report_md,
+            file_name=f"research_report_{run_id[:8]}.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
 
 
 def _run_research(query: str, profile: str):
     """Open SSE stream, populate run state in session_state, and render live UI."""
     import uuid
 
-    # We don't know run_id until the first API response, but the API's run_id
-    # is the thread_id from the stream. We intercept it from the complete event.
-    # Pre-allocate a placeholder run_id for the UI:
     placeholder_id = str(uuid.uuid4())
     run_state = _get_run_state(placeholder_id)
     run_state["start_time"] = time.perf_counter()
+    run_state["final_report_md"] = ""
     st.session_state.active_run_id = placeholder_id
     st.session_state.mode = "streaming"
 
-    # ── Single-column full-width layout ──
     activity_ph = st.empty()
 
     st.markdown("### 🧠 Full Agent Chain & Thought Process Trace")
     log_ph = st.empty()
 
-    report_container = st.container()
-    with report_container:
-        report_ph = st.empty()
+    st.markdown("### 📄 Research Report")
+    report_ph = st.empty()
+    report_ph.info("⏳ Research in progress — report will appear here once complete...")
 
     st.markdown("### 📊 Live Execution Metrics")
     metrics_ph = st.empty()
 
     real_run_id = placeholder_id
     hitl_event = None
+    completed = False
 
     try:
         with (
@@ -703,19 +773,16 @@ def _run_research(query: str, profile: str):
                 card = _format_thought_card(event)
                 if card:
                     run_state["thought_log"].append(card)
-                    # Display full untruncated history of thought cards
                     log_ph.markdown(
                         '<div class="thought-log">' + "".join(run_state["thought_log"]) + "</div>",
                         unsafe_allow_html=True,
                     )
 
-                # Report token streaming
+                # Token streaming — accumulate silently for fallback, do NOT show raw to user
                 if etype == "token":
                     content = event.get("content", "")
                     run_state["accumulated_report"] += content
                     run_state["token_count"] += max(1, int(len(content) * _AVG_TOKENS_PER_CHAR))
-                    with report_container:
-                        report_ph.markdown(run_state["accumulated_report"] + "▌")
 
                 # Metric tracking & activity update
                 if etype == "node_start":
@@ -747,6 +814,7 @@ def _run_research(query: str, profile: str):
                 elif etype == "complete":
                     real_run_id = event.get("run_id", placeholder_id)
                     run_state["status"] = "completed"
+                    completed = True
                     activity_ph.markdown(
                         '<div class="live-activity"><span class="status-dot completed"></span>'
                         " Research Complete!</div>",
@@ -757,18 +825,16 @@ def _run_research(query: str, profile: str):
                 # Live horizontal metrics row
                 est_cost = run_state["token_count"] * _OUTPUT_COST_PER_TOKEN
                 with metrics_ph.container():
-                    m1, m2, m3, m4, m5, m6 = st.columns(6)
+                    m1, m2, m3, m4, m5 = st.columns(5)
                     with m1:
-                        metric_card("Profile", profile.upper())
-                    with m2:
                         metric_card("Nodes", str(run_state["node_count"]))
-                    with m3:
+                    with m2:
                         metric_card("Tool Calls", str(run_state["tool_count"]))
-                    with m4:
+                    with m3:
                         metric_card("Sources", str(run_state["source_count"]))
-                    with m5:
+                    with m4:
                         metric_card("Tokens", f"{run_state['token_count']:,}")
-                    with m6:
+                    with m5:
                         metric_card("Est. Cost", f"${est_cost:.4f}")
 
     except httpx.ConnectError:
@@ -784,11 +850,6 @@ def _run_research(query: str, profile: str):
         st.session_state.active_run_id = real_run_id
         run_state = st.session_state.run_states[real_run_id]
 
-    # Finalise report display
-    if run_state["accumulated_report"]:
-        with report_container:
-            report_ph.markdown(run_state["accumulated_report"])
-
     # Refresh history sidebar
     st.session_state.runs_cache = _fetch_runs()
 
@@ -797,40 +858,12 @@ def _run_research(query: str, profile: str):
         run_state["hitl_event"] = hitl_event
         _hitl_dialog(hitl_event, real_run_id)
 
-    # Download buttons
-    if run_state["accumulated_report"]:
-        st.markdown("---")
-        dl1, dl2, dl3 = st.columns(3)
-        with dl1:
-            st.download_button(
-                "📥 Download Markdown",
-                data=run_state["accumulated_report"],
-                file_name=f"research_{real_run_id[:8]}.md",
-                mime="text/markdown",
-                use_container_width=True,
-            )
-        with dl2:
-            try:
-                pdf_resp = httpx.get(
-                    f"{AGENT_API_URL}/research/report/{real_run_id}/pdf", timeout=30.0
-                )
-                if pdf_resp.status_code == 200:
-                    st.download_button(
-                        "📥 Download PDF",
-                        data=pdf_resp.content,
-                        file_name=f"research_{real_run_id[:8]}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
-            except Exception:
-                st.button("📥 PDF Unavailable", disabled=True, use_container_width=True)
-        with dl3:
-            st.button(
-                f"🔍 Run ID: `{real_run_id[:8]}...`",
-                disabled=True,
-                use_container_width=True,
-                help="Open the Traces page to see full observability details.",
-            )
+    # After completion, switch to view mode and rerun automatically so user sees final report & PDF instantly
+    if completed:
+        st.session_state.mode = "view"
+        st.session_state.active_run_id = real_run_id
+        _render_final_report(real_run_id, report_ph, run_state)
+        st.rerun()
 
 
 # ────────────────────────── View Past Run ─────────────────────────────────────
@@ -840,6 +873,22 @@ def _render_run_viewer(run_id: str, runs: list[dict]):
     """Render a completed or in-progress run loaded from the API."""
     # Check if we have local streaming state for this run
     local_state = st.session_state.run_states.get(run_id)
+
+    # If state is missing (e.g. after app restart), reconstruct from API graph state
+    if not local_state or not local_state.get("thought_log"):
+        try:
+            resp = httpx.get(f"{AGENT_API_URL}/research/state/{run_id}", timeout=8.0)
+            if resp.status_code == 200:
+                gstate = resp.json()
+                local_state = _get_run_state(run_id)
+                if gstate.get("thought_log"):
+                    local_state["thought_log"] = gstate["thought_log"]
+                if gstate.get("findings_count"):
+                    local_state["source_count"] = gstate["findings_count"]
+                if gstate.get("has_final_report"):
+                    local_state["status"] = "completed"
+        except Exception:
+            pass
 
     run_meta = next((r for r in runs if r.get("run_id") == run_id), {})
     query = run_meta.get("query", "Unknown query")
@@ -883,23 +932,14 @@ def _render_run_viewer(run_id: str, runs: list[dict]):
             _hitl_dialog(local_state["hitl_event"], run_id)
 
     else:
-        # Load from API
+        # Load from API — use the formatted markdown endpoint
         st.markdown("### 📄 Research Report")
-        report_data = _fetch_report(run_id)
+        md_content = _fetch_formatted_report(run_id)
 
-        if report_data:
-            executive = report_data.get("executive_summary", "")
-            body = report_data.get("body", "")
-            if executive:
-                st.markdown(f"> {executive}")
-            if body:
-                st.markdown(body)
-            elif report_data.get("content"):
-                st.markdown(report_data["content"])
-            else:
-                st.json(report_data)
+        if md_content:
+            st.markdown(md_content)
         else:
-            # No final report — check if the run is paused at planner
+            # No formatted report — check if the run is paused or still running
             graph_state = None
             try:
                 resp = httpx.get(f"{AGENT_API_URL}/research/state/{run_id}", timeout=8.0)
@@ -960,35 +1000,36 @@ def _render_run_viewer(run_id: str, runs: list[dict]):
 
     # Download section
     st.markdown("---")
+    st.markdown("### 📥 Download Report")
     dl1, dl2 = st.columns(2)
     with dl1:
-        report_text = local_state.get("accumulated_report", "") if local_state else ""
-        if not report_text:
-            report_data = _fetch_report(run_id)
-            report_text = (report_data or {}).get("body", "")
-        if report_text:
+        pdf_bytes = _fetch_pdf_bytes(run_id)
+        if pdf_bytes:
             st.download_button(
-                "📥 Download Markdown",
-                data=report_text,
-                file_name=f"research_{run_id[:8]}.md",
+                "📄 Download PDF Report",
+                data=pdf_bytes,
+                file_name=f"research_report_{run_id[:8]}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary",
+            )
+        else:
+            st.button(
+                "📄 PDF Unavailable",
+                disabled=True,
+                use_container_width=True,
+                help="PDF generation requires WeasyPrint.",
+            )
+    with dl2:
+        md_text = _fetch_formatted_report(run_id)
+        if md_text:
+            st.download_button(
+                "📝 Download Markdown",
+                data=md_text,
+                file_name=f"research_report_{run_id[:8]}.md",
                 mime="text/markdown",
                 use_container_width=True,
             )
-    with dl2:
-        try:
-            pdf_resp = httpx.get(f"{AGENT_API_URL}/research/report/{run_id}/pdf", timeout=30.0)
-            if pdf_resp.status_code == 200:
-                st.download_button(
-                    "📥 Download PDF",
-                    data=pdf_resp.content,
-                    file_name=f"research_{run_id[:8]}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                )
-            else:
-                st.button("📥 PDF Unavailable", disabled=True, use_container_width=True)
-        except Exception:
-            st.button("📥 PDF Unavailable", disabled=True, use_container_width=True)
 
     # Observability expander
     with st.expander("📊 Observability Details (node timings, tool stats)", expanded=False):
@@ -1072,10 +1113,10 @@ def _resume_research_stream(run_id: str):
     """Resume an approved research run on the main page, streaming SSE events in real-time."""
     run_state = _get_run_state(run_id)
     run_state["approved_to_resume"] = False
+    run_state.setdefault("final_report_md", "")
     if not run_state.get("start_time"):
         run_state["start_time"] = time.perf_counter()
 
-    # ── Single-column full-width layout ──
     activity_ph = st.empty()
 
     st.markdown("### 🧠 Full Agent Chain & Thought Process Trace")
@@ -1086,14 +1127,14 @@ def _resume_research_stream(run_id: str):
             unsafe_allow_html=True,
         )
 
-    report_container = st.container()
-    with report_container:
-        report_ph = st.empty()
-        if run_state["accumulated_report"]:
-            report_ph.markdown(run_state["accumulated_report"])
+    st.markdown("### 📄 Research Report")
+    report_ph = st.empty()
+    report_ph.info("⏳ Research in progress — report will appear here once complete...")
 
     st.markdown("### 📊 Live Execution Metrics")
     metrics_ph = st.empty()
+
+    completed = False
 
     try:
         with (
@@ -1119,12 +1160,11 @@ def _resume_research_stream(run_id: str):
                         unsafe_allow_html=True,
                     )
 
+                # Accumulate tokens silently for fallback only
                 if etype == "token":
                     content = event.get("content", "")
                     run_state["accumulated_report"] += content
                     run_state["token_count"] += max(1, int(len(content) * _AVG_TOKENS_PER_CHAR))
-                    with report_container:
-                        report_ph.markdown(run_state["accumulated_report"] + "▌")
 
                 if etype == "node_start":
                     run_state["node_count"] += 1
@@ -1143,14 +1183,17 @@ def _resume_research_stream(run_id: str):
                     st.toast(f"✅ {event.get('tool', 'Tool')} returned results", icon="✅")
                 elif etype == "complete":
                     run_state["status"] = "completed"
+                    completed = True
                     activity_ph.markdown(
                         '<div class="live-activity"><span class="status-dot completed"></span>'
                         " Research Complete!</div>",
                         unsafe_allow_html=True,
                     )
+                    st.toast("🏁 Research completed!", icon="🎉")
+
                 est_cost = run_state["token_count"] * _OUTPUT_COST_PER_TOKEN
                 with metrics_ph.container():
-                    m1, m2, m3, m4, m5, m6 = st.columns(6)
+                    m1, m2, m3, m4, m5 = st.columns(5)
                     with m1:
                         metric_card("Status", run_state["status"].upper())
                     with m2:
@@ -1160,8 +1203,6 @@ def _resume_research_stream(run_id: str):
                     with m4:
                         metric_card("Sources", str(run_state["source_count"]))
                     with m5:
-                        metric_card("Tokens", f"{run_state['token_count']:,}")
-                    with m6:
                         metric_card("Est. Cost", f"${est_cost:.4f}")
 
     except httpx.ConnectError:
@@ -1171,42 +1212,14 @@ def _resume_research_stream(run_id: str):
         st.error(f"❌ Stream error: {type(e).__name__}: {str(e)[:300]}")
         return
 
-    if run_state["accumulated_report"]:
-        with report_container:
-            report_ph.markdown(run_state["accumulated_report"])
-
     st.session_state.runs_cache = _fetch_runs()
 
-    if run_state["accumulated_report"]:
-        st.markdown("---")
-        dl1, dl2, dl3 = st.columns(3)
-        with dl1:
-            st.download_button(
-                "📥 Download Markdown",
-                data=run_state["accumulated_report"],
-                file_name=f"research_{run_id[:8]}.md",
-                mime="text/markdown",
-                use_container_width=True,
-            )
-        with dl2:
-            try:
-                pdf_resp = httpx.get(f"{AGENT_API_URL}/research/report/{run_id}/pdf", timeout=30.0)
-                if pdf_resp.status_code == 200:
-                    st.download_button(
-                        "📥 Download PDF",
-                        data=pdf_resp.content,
-                        file_name=f"research_{run_id[:8]}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
-            except Exception:
-                st.button("📥 PDF Unavailable", disabled=True, use_container_width=True)
-        with dl3:
-            st.button(
-                f"🔍 Run ID: `{run_id[:8]}...`",
-                disabled=True,
-                use_container_width=True,
-            )
+    # After completion, switch to view mode and rerun automatically so user sees final report & PDF instantly
+    if completed:
+        st.session_state.mode = "view"
+        st.session_state.active_run_id = run_id
+        _render_final_report(run_id, report_ph, run_state)
+        st.rerun()
 
 
 # ────────────────────────── Main App ──────────────────────────────────────────

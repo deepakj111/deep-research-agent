@@ -2,8 +2,6 @@ import asyncio
 import contextlib
 import time
 
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
 from agent.circuit_breaker import circuit_breakers
 from agent.middleware.pii_filter import filter_pii_simple
 from agent.retry_policy import ToolDegradedError, retry_with_policy
@@ -12,7 +10,7 @@ from config.profiles import load_profile
 from config.settings import settings
 from observability.tracer import ToolCallRecord, get_tracer
 from utils.auth import get_jwt_token
-from utils.mcp_helpers import parse_mcp_raw_results
+from utils.mcp_helpers import get_mcp_tool, parse_mcp_raw_results
 
 # Limit concurrent web search MCP calls across all parallel agents
 _semaphore = asyncio.Semaphore(settings.agent_max_concurrency)
@@ -34,23 +32,16 @@ async def run(state: ResearchState) -> dict:
 
     try:
         async with _semaphore:
-            client = MultiServerMCPClient(
-                {
-                    "web_search": {
-                        "url": settings.web_search_mcp_url,
-                        "transport": "sse",
-                        "headers": {"Authorization": f"Bearer {get_jwt_token()}"},
-                    }
-                }
+            search_tool = await get_mcp_tool(
+                "web_search", settings.web_search_mcp_url, get_jwt_token(), "search_web"
             )
-            tools = await client.get_tools()
-            search_tool = next(t for t in tools if t.name == "search_web")
 
             # Retry policy wraps circuit breaker: retries happen inside the CB window
             async def _call_with_cb():
                 async def _inner():
-                    return await search_tool.ainvoke(
-                        {"query": subquestion, "max_results": max_results}
+                    return await asyncio.wait_for(
+                        search_tool.ainvoke({"query": subquestion, "max_results": max_results}),
+                        timeout=12.0,
                     )
 
                 return await circuit_breakers["search_web"].call(_inner())

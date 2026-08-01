@@ -131,46 +131,34 @@ class TestToMarkdown:
 
     def test_contains_key_findings(self, sample_report: ReportOutput):
         md = to_markdown(sample_report)
-        assert "## Key Findings" in md
+        assert "## Key Findings & Strategic Takeaways" in md
         assert "Surface codes" in md
         assert "Willow chip" in md
 
-    def test_contains_citations_with_trust_scores(self, sample_report: ReportOutput):
-        md = to_markdown(sample_report)
-        assert "trust: 0.85" in md
-        assert "arxiv" in md
-
     def test_contains_emerging_trends(self, sample_report: ReportOutput):
         md = to_markdown(sample_report)
-        assert "## Emerging Trends" in md
+        assert "## Emerging Trends & Market Outlook" in md
         assert "Topological qubits" in md
 
     def test_contains_model_disagreements(self, sample_report: ReportOutput):
         md = to_markdown(sample_report)
-        assert "## Model Disagreements" in md
+        assert "## Model & Forecast Disagreements" in md
 
     def test_contains_contradictions(self, sample_report: ReportOutput):
         md = to_markdown(sample_report)
-        assert "## Contradictions Detected" in md
+        assert "## Contradictions & Differing Perspectives" in md
         assert "Fault tolerance by 2027" in md
 
-    def test_contains_sources_with_trust_indicators(self, sample_report: ReportOutput):
+    def test_contains_sources_bibliography(self, sample_report: ReportOutput):
         md = to_markdown(sample_report)
-        assert "## Sources" in md
-        # High trust = green circle
-        assert "🟢" in md
-        # Medium trust
-        assert "🟡" in md
-
-    def test_contains_version_footer(self, sample_report: ReportOutput):
-        md = to_markdown(sample_report)
-        assert "Report version 1" in md
+        assert "## References & Key Sources" in md
+        assert "Surface Code Improvements" in md
+        assert "https://arxiv.org/abs/2501.12345" in md
 
     def test_minimal_report_no_crash(self, minimal_report: ReportOutput):
         md = to_markdown(minimal_report)
         assert "# Minimal Report" in md
-        assert "## Key Findings" in md
-        # No trends/steps sections when empty
+        assert "## Executive Summary" in md
         assert "## Emerging Trends" not in md
 
 

@@ -482,6 +482,7 @@ dependencies = [
     { name = "deepeval" },
     { name = "fastapi" },
     { name = "fastmcp" },
+    { name = "fpdf2" },
     { name = "httpx" },
     { name = "langchain" },
     { name = "langchain-mcp-adapters" },
@@ -525,6 +526,7 @@ requires-dist = [
     { name = "deepeval", specifier = ">=3.9.7" },
     { name = "fastapi", specifier = ">=0.136.0" },
     { name = "fastmcp", specifier = ">=3.2.4" },
+    { name = "fpdf2", specifier = ">=2.8.7" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain", specifier = ">=1.2.15" },
     { name = "langchain-mcp-adapters", specifier = ">=0.2.2" },
@@ -600,6 +602,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4f/1d/dd103cf4771ca5cc27251388a0320ec3e595c4c1239bdaff0ee7ab7d5a61/deepeval-3.9.7.tar.gz", hash = "sha256:33e636ed5ebadc815b30d1ba5cb8385575b319be37e982a9668415c4abb631ad", size = 615839, upload-time = "2026-04-14T06:39:39.425Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fd/9f/448ced919bd1a8f0a31a13d50db7b813d80a82f99362ef271188f9cf11e5/deepeval-3.9.7-py3-none-any.whl", hash = "sha256:db5f0373291c0c10c7dc3fdeb53fb91dfc29293a4b42fb75f31dd36cd09b506a", size = 844620, upload-time = "2026-04-14T06:39:37.448Z" },
+]
+
+[[package]]
+name = "defusedxml"
+version = "0.7.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz", hash = "sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69", size = 75520, upload-time = "2021-03-08T10:59:26.269Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl", hash = "sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61", size = 25604, upload-time = "2021-03-08T10:59:24.45Z" },
 ]
 
 [[package]]
@@ -782,6 +793,20 @@ woff = [
     { name = "brotli", marker = "platform_python_implementation == 'CPython'" },
     { name = "brotlicffi", marker = "platform_python_implementation != 'CPython'" },
     { name = "zopfli" },
+]
+
+[[package]]
+name = "fpdf2"
+version = "2.8.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "fonttools" },
+    { name = "pillow" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/27/f2/72feae0b2827ed38013e4307b14f95bf0b3d124adfef4d38a7d57533f7be/fpdf2-2.8.7.tar.gz", hash = "sha256:7060ccee5a9c7ab0a271fb765a36a23639f83ef8996c34e3d46af0a17ede57f9", size = 362351, upload-time = "2026-02-28T05:39:16.456Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/66/0a/cf50ecffa1e3747ed9380a3adfc829259f1f86b3fdbd9e505af789003141/fpdf2-2.8.7-py3-none-any.whl", hash = "sha256:d391fc508a3ce02fc43a577c830cda4fe6f37646f2d143d489839940932fbc19", size = 327056, upload-time = "2026-02-28T05:39:14.619Z" },
 ]
 
 [[package]]

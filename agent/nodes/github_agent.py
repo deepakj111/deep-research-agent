@@ -2,8 +2,6 @@ import asyncio
 import contextlib
 import time
 
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
 from agent.circuit_breaker import circuit_breakers
 from agent.middleware.pii_filter import filter_pii_simple
 from agent.retry_policy import ToolDegradedError, retry_with_policy
@@ -12,7 +10,7 @@ from config.profiles import load_profile
 from config.settings import settings
 from observability.tracer import ToolCallRecord, get_tracer
 from utils.auth import get_jwt_token
-from utils.mcp_helpers import parse_mcp_raw_results
+from utils.mcp_helpers import get_mcp_tool, parse_mcp_raw_results
 
 # Limit concurrent GitHub MCP calls across all parallel agents
 _semaphore = asyncio.Semaphore(settings.agent_max_concurrency)
@@ -34,21 +32,16 @@ async def run(state: ResearchState) -> dict:
 
     try:
         async with _semaphore:
-            client = MultiServerMCPClient(
-                {
-                    "github": {
-                        "url": settings.github_mcp_url,
-                        "transport": "sse",
-                        "headers": {"Authorization": f"Bearer {get_jwt_token()}"},
-                    }
-                }
+            search_tool = await get_mcp_tool(
+                "github", settings.github_mcp_url, get_jwt_token(), "search_repos"
             )
-            tools = await client.get_tools()
-            search_tool = next(t for t in tools if t.name == "search_repos")
 
             async def _call_with_cb():
                 async def _inner():
-                    return await search_tool.ainvoke({"topic": subquestion, "max_repos": max_repos})
+                    return await asyncio.wait_for(
+                        search_tool.ainvoke({"topic": subquestion, "max_repos": max_repos}),
+                        timeout=12.0,
+                    )
 
                 return await circuit_breakers["search_repos"].call(_inner())
 

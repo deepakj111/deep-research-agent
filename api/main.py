@@ -567,6 +567,10 @@ async def get_research_state(thread_id: str):
     state_snapshot = graph.get_state(thread_config)
     if not state_snapshot:
         raise HTTPException(status_code=404, detail="Thread not found.")
+
+    final_report_obj = state_snapshot.values.get("final_report")
+    run_meta_obj = state_snapshot.values.get("run_metadata")
+
     return {
         "thread_id": thread_id,
         "next_node": state_snapshot.next,
@@ -575,6 +579,14 @@ async def get_research_state(thread_id: str):
         "subquestions": state_snapshot.values.get("subquestions", []),
         "findings_count": len(state_snapshot.values.get("findings", [])),
         "approved_plan": state_snapshot.values.get("approved_plan"),
+        "thought_log": state_snapshot.values.get("thought_log", []),
+        "has_final_report": bool(final_report_obj),
+        "final_report": final_report_obj.model_dump()
+        if hasattr(final_report_obj, "model_dump")
+        else final_report_obj,
+        "run_metadata": run_meta_obj.model_dump()
+        if hasattr(run_meta_obj, "model_dump")
+        else run_meta_obj,
     }
 
 

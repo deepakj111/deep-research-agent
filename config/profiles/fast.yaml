@@ -1,8 +1,8 @@
 name: fast
-description: "Quick scan: 3-5 min, lower cost"
-max_web_results: 3
-max_arxiv_papers: 2
-max_github_repos: 3
-max_iterations: 2
+description: "Quick scan: 2-4 min, focused web sources"
+max_web_results: 5
+max_arxiv_papers: 0
+max_github_repos: 2
+max_iterations: 1
 synthesis_depth: brief
 query_decomposition: breadth-first

@@ -177,8 +177,13 @@ def _build_report_text(report: ReportOutput) -> str:
     parts = [
         f"# {report.title}",
         f"\n## Executive Summary\n{report.executive_summary}",
-        "\n## Key Findings",
     ]
+    if getattr(report, "introduction", None):
+        parts.append(f"\n## Context & Introduction\n{report.introduction}")
+    if getattr(report, "detailed_analysis", None):
+        parts.append(f"\n## In-Depth Analysis\n{report.detailed_analysis}")
+
+    parts.append("\n## Key Findings")
     for i, finding in enumerate(report.key_findings[:15], 1):
         parts.append(f"\n### {i}. {finding.claim}")
         parts.append(f"Confidence: {finding.confidence}")
@@ -189,9 +194,9 @@ def _build_report_text(report: ReportOutput) -> str:
         parts.append("\n## Emerging Trends")
         parts.extend(f"- {t}" for t in report.emerging_trends)
 
-    if report.recommended_next_steps:
+    if getattr(report, "recommended_next_steps", None):
         parts.append("\n## Recommended Next Steps")
-        parts.extend(f"- {s}" for s in report.recommended_next_steps)
+        parts.extend(f"- {s}" for s in getattr(report, "recommended_next_steps", []))
 
     if report.model_disagreements:
         parts.append("\n## Model Disagreements")

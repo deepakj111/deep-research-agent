@@ -6,9 +6,11 @@ from typing import Any
 
 import yaml
 from langchain.chat_models import init_chat_model
+from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from agent.state import ReportOutput, ResearchState
+from agent.state import ContradictionRecord, Finding, ReportOutput, ResearchState
+from config.profiles import load_profile
 from config.settings import settings
 from utils.callbacks import TokenCostCallback
 
@@ -20,39 +22,87 @@ with open(_PROMPTS_DIR / "synthesizer.yaml") as f:
 SYNTHESIS_PROMPT = _prompts["synthesis_prompt"]
 
 
+class SynthesisOutput(BaseModel):
+    title: str
+    executive_summary: str
+    introduction: str = Field(default="", description="Contextual background and research scope")
+    detailed_analysis: str = Field(
+        default="",
+        description="Comprehensive multi-section narrative breakdown with analytical prose and data synthesis",
+    )
+    key_findings: list[Finding]
+    emerging_trends: list[str]
+    model_disagreements: list[str] = Field(default_factory=list)
+    contradictions: list[ContradictionRecord] = Field(default_factory=list)
+
+
 @functools.lru_cache(maxsize=1)
 def _get_primary():
     return init_chat_model(
         settings.default_model, temperature=settings.synthesis_temperature
-    ).with_structured_output(ReportOutput)
+    ).with_structured_output(SynthesisOutput)
 
 
 @functools.lru_cache(maxsize=1)
 def _get_secondary():
     return init_chat_model(
         settings.secondary_model, temperature=settings.synthesis_temperature
-    ).with_structured_output(ReportOutput)  # type: ignore[call-arg]
+    ).with_structured_output(SynthesisOutput)  # type: ignore[call-arg]
 
 
 def build_synthesis_context(findings: list[Any]) -> str:
     sections = []
+    source_idx = 1
+    seen_urls: set[str] = set()
+
     for f in findings:
         section = [f"### Sub-question: {f.subquestion}"]
         if f.web_results:
-            section.append("**Web Sources:**")
+            web_lines = []
             for w in f.web_results:
-                section.append(f"- [{w.title}]({w.url}): {w.snippet[:200]}")
+                if w.url in seen_urls:
+                    continue
+                seen_urls.add(w.url)
+                web_lines.append(f"- [{source_idx}] [{w.title}]({w.url}): {w.snippet[:300]}")
+                source_idx += 1
+            if web_lines:
+                section.append("**Web Sources:**")
+                section.extend(web_lines)
+
         if f.papers:
-            section.append("**Academic Papers:**")
+            paper_lines = []
             for p in f.papers:
-                section.append(f"- {p.title} ({p.published_date}): {p.abstract[:200]}")
+                if p.url in seen_urls:
+                    continue
+                seen_urls.add(p.url)
+                paper_lines.append(
+                    f"- [{source_idx}] [{p.title}]({p.url}) ({p.published_date}): {p.abstract[:300]}"
+                )
+                source_idx += 1
+            if paper_lines:
+                section.append("**Academic Papers:**")
+                section.extend(paper_lines)
+
         if f.repos:
-            section.append("**GitHub Repos:**")
+            repo_lines = []
             for r in f.repos:
-                section.append(f"- [{r.name}]({r.url}) ★{r.stars}: {r.description[:150]}")
+                if r.url in seen_urls:
+                    continue
+                seen_urls.add(r.url)
+                repo_lines.append(
+                    f"- [{source_idx}] [{r.name}]({r.url}) ★{r.stars}: {r.description[:200]}"
+                )
+                source_idx += 1
+            if repo_lines:
+                section.append("**GitHub Repos:**")
+                section.extend(repo_lines)
+
         if f.tool_errors:
             section.append(f"**Errors (graceful degradation):** {', '.join(f.tool_errors)}")
-        sections.append("\n".join(section))
+
+        if len(section) > 1:
+            sections.append("\n".join(section))
+
     return "\n\n".join(sections)
 
 
@@ -62,13 +112,21 @@ async def _invoke_synth_llm(llm, prompt, callbacks=None):
 
 
 async def run(state: ResearchState) -> dict:
+    profile_name = state.get("profile", "fast")
+    profile_cfg = load_profile(profile_name)
+    synthesis_depth = profile_cfg.get("synthesis_depth", "brief")
+
     context = build_synthesis_context(state.get("findings", []))
-    prompt = SYNTHESIS_PROMPT.format(query=state["query"], context=context)
+    prompt = SYNTHESIS_PROMPT.format(
+        query=state["query"],
+        context=context,
+        synthesis_depth=synthesis_depth,
+    )
 
     cb_primary = TokenCostCallback()
     cb_secondary = TokenCostCallback()
 
-    final_report: ReportOutput | None = None
+    synth_output: SynthesisOutput | None = None
     primary_failed = False
     secondary_failed = False
     primary_err: Exception | None = None
@@ -76,7 +134,7 @@ async def run(state: ResearchState) -> dict:
 
     # Try primary LLM first
     try:
-        final_report = await asyncio.wait_for(
+        synth_output = await asyncio.wait_for(
             _invoke_synth_llm(_get_primary(), prompt, callbacks=[cb_primary]),
             timeout=settings.synthesis_timeout_seconds,
         )
@@ -87,7 +145,7 @@ async def run(state: ResearchState) -> dict:
     # Fallback to secondary LLM if primary failed
     if primary_failed:
         try:
-            final_report = await asyncio.wait_for(
+            synth_output = await asyncio.wait_for(
                 _invoke_synth_llm(_get_secondary(), prompt, callbacks=[cb_secondary]),
                 timeout=settings.synthesis_timeout_seconds,
             )
@@ -95,7 +153,7 @@ async def run(state: ResearchState) -> dict:
             secondary_failed = True
             secondary_err = exc
 
-    if primary_failed and secondary_failed:
+    if (primary_failed and secondary_failed) or synth_output is None:
         return {
             "final_report": None,
             "error_log": [
@@ -104,6 +162,18 @@ async def run(state: ResearchState) -> dict:
             ],
             "thought_log": ["[Synthesizer] 0/2 models succeeded. Cannot produce report."],
         }
+
+    final_report = ReportOutput(
+        title=synth_output.title,
+        executive_summary=synth_output.executive_summary,
+        introduction=synth_output.introduction,
+        detailed_analysis=synth_output.detailed_analysis,
+        key_findings=synth_output.key_findings,
+        emerging_trends=synth_output.emerging_trends,
+        model_disagreements=synth_output.model_disagreements,
+        contradictions=synth_output.contradictions,
+        sources=[],
+    )
 
     # ── Accumulate cost from LLM calls ──────────────────────────────────────
     meta = state.get("run_metadata")

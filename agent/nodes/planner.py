@@ -34,9 +34,9 @@ def _get_planner_llm():
 
 
 NUM_QUESTIONS = {
-    "narrow": 3,
-    "broad": 6,
-    "ambiguous": 4,
+    "narrow": 2,
+    "broad": 4,
+    "ambiguous": 3,
 }
 
 STRATEGIES = {
@@ -66,8 +66,10 @@ async def _invoke_planner_llm(llm, messages, callbacks=None):
 
 async def run(state: ResearchState) -> dict:
     difficulty = state.get("query_difficulty", "narrow")
-    n = NUM_QUESTIONS.get(difficulty, 4)
+    n = NUM_QUESTIONS.get(difficulty, 3)
     profile_name = state.get("profile", "fast")
+    if profile_name == "fast":
+        n = min(n, 3)
 
     profile_cfg = load_profile(profile_name)
     strategy_key = profile_cfg.get("query_decomposition", "breadth-first")
@@ -78,16 +80,15 @@ async def run(state: ResearchState) -> dict:
     critique = state.get("critique")
 
     if iteration > 0 and critique and critique.missing_areas:
+        replan_n = min(2, len(critique.missing_areas) or 2)
         user_prompt = _prompts.get("replan_user", "").format(
             query=state["query"],
             iteration=iteration,
             max_iterations=settings.max_iterations,
             missing_areas="\n".join([f"- {m}" for m in critique.missing_areas]),
-            n=n,
+            n=replan_n,
         )
-        task_label = (
-            f"Generated {n} follow-up questions for iteration {iteration} targeting missing areas."
-        )
+        task_label = f"Generated {replan_n} follow-up questions for iteration {iteration} targeting missing areas."
     else:
         user_prompt = PLANNER_USER.format(
             query=state["query"],

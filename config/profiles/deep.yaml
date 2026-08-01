@@ -1,8 +1,8 @@
 name: deep
-description: "Comprehensive research: 8-12 min"
-max_web_results: 8
-max_arxiv_papers: 5
-max_github_repos: 5
-max_iterations: 4
+description: "Comprehensive research: 1-2 min"
+max_web_results: 6
+max_arxiv_papers: 4
+max_github_repos: 4
+max_iterations: 2
 synthesis_depth: comprehensive
-query_decomposition: depth-first
+query_decomposition: breadth-first

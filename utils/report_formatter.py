@@ -4,20 +4,19 @@ utils/report_formatter.py
 Report export utilities for the DeepResearch Agent.
 
 Provides three output formats:
-  1. Structured Markdown — with citations, trust scores, and source badges
+  1. Structured Markdown — clean, professional report for end users
   2. HTML — styled, print-ready HTML for browser viewing
-  3. PDF — via WeasyPrint, with professional typography and layout
+  3. PDF — via fpdf2 (pure Python, no system deps required)
 
 Design:
   - to_markdown() is the primary format, used for streaming and downloads.
   - to_html() wraps the markdown in a styled template.
-  - export_to_pdf() renders the HTML to PDF using WeasyPrint.
+  - export_to_pdf() renders the report to PDF using fpdf2.
 """
 
 from __future__ import annotations
 
 import logging
-from io import BytesIO
 
 import markdown as md_lib  # type: ignore[import-untyped]
 
@@ -29,65 +28,84 @@ logger = logging.getLogger(__name__)
 
 
 def to_markdown(report: ReportOutput) -> str:
-    """Convert a ReportOutput to a structured markdown document."""
+    """Convert a ReportOutput to a professional, publication-ready markdown document."""
     lines = [
         f"# {report.title}",
         "",
         "## Executive Summary",
         "",
-        report.executive_summary,
-        "",
-        "## Key Findings",
+        report.executive_summary.strip(),
         "",
     ]
-    for i, finding in enumerate(report.key_findings, 1):
-        lines.append(f"### {i}. {finding.claim}")
-        lines.append(f"*Confidence: {finding.confidence}*")
-        lines.append("")
-        for c in finding.citations:
+
+    if getattr(report, "introduction", None) and report.introduction.strip():
+        lines.extend(
+            [
+                "## Context & Introduction",
+                "",
+                report.introduction.strip(),
+                "",
+            ]
+        )
+
+    if getattr(report, "detailed_analysis", None) and report.detailed_analysis.strip():
+        lines.extend(
+            [
+                "## In-Depth Analysis",
+                "",
+                report.detailed_analysis.strip(),
+                "",
+            ]
+        )
+
+    if report.key_findings:
+        lines.extend(["## Key Findings & Strategic Takeaways", ""])
+        for i, finding in enumerate(report.key_findings, 1):
+            confidence_badge = (
+                "✅"
+                if finding.confidence == "high"
+                else ("⚠️" if finding.confidence == "medium" else "ℹ️")
+            )
             lines.append(
-                f"- [{c.title}]({c.source_url}) `{c.source_type}` (trust: {c.trust_score:.2f})"
+                f"{i}. **{finding.claim.strip()}** *(Confidence: {confidence_badge} {finding.confidence.capitalize()})*"
             )
         lines.append("")
 
     if report.emerging_trends:
-        lines.extend(["## Emerging Trends", ""])
+        lines.extend(["## Emerging Trends & Market Outlook", ""])
         for trend in report.emerging_trends:
-            lines.append(f"- {trend}")
-        lines.append("")
-
-    if report.recommended_next_steps:
-        lines.extend(["## Recommended Next Steps", ""])
-        for step in report.recommended_next_steps:
-            lines.append(f"- {step}")
+            lines.append(f"- {trend.strip()}")
         lines.append("")
 
     if report.model_disagreements:
-        lines.extend(["## Model Disagreements (Flagged)", ""])
+        lines.extend(["## Model & Forecast Disagreements", ""])
         for d in report.model_disagreements:
-            lines.append(f"> {d}")
+            lines.append(f"- {d.strip()}")
         lines.append("")
 
     if report.contradictions:
-        lines.extend(["## Contradictions Detected", ""])
-        for contra in report.contradictions:
-            lines.append(f"- **Claim A:** {contra.claim_a}")
-            lines.append(f"  **Claim B:** {contra.claim_b}")
-            lines.append(
-                f"  **Resolution:** {contra.resolution} (preferred: {contra.preferred_source})"
-            )
-            lines.append("")
+        lines.extend(["## Contradictions & Differing Perspectives", ""])
+        for c in report.contradictions:
+            lines.append(f"- **{c.claim_a}** vs **{c.claim_b}**: {c.resolution}")
+        lines.append("")
 
-    lines.extend(["## Sources", ""])
-    for c in report.sources:
-        trust_label = "🟢" if c.trust_score >= 0.7 else ("🟡" if c.trust_score >= 0.4 else "🔴")
-        lines.append(f"- {trust_label} [{c.title}]({c.source_url}) — {c.source_type}")
+    # References & Key Sources section — deduplicated numbered bibliography
+    if report.sources:
+        lines.extend(["## References & Key Sources", ""])
+        seen_urls: set[str] = set()
+        src_idx = 1
+        for s in report.sources:
+            if s.source_url not in seen_urls:
+                seen_urls.add(s.source_url)
+                title = s.title.strip() or s.source_url
+                lines.append(f"{src_idx}. [{title}]({s.source_url})")
+                src_idx += 1
+        lines.append("")
 
     lines.extend(
         [
-            "",
             "---",
-            f"*Report version {report.version} • Generated by DeepResearch Agent*",
+            "*Report generated by DeepResearch Agent*",
         ]
     )
 
@@ -106,84 +124,121 @@ _HTML_TEMPLATE = """\
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
     body {{
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        max-width: 800px;
-        margin: 2rem auto;
-        padding: 0 2rem;
-        color: #1a1a2e;
-        line-height: 1.7;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        max-width: 880px;
+        margin: 2.5rem auto;
+        padding: 0 2.5rem;
+        color: #1f2937;
+        line-height: 1.75;
         background: #ffffff;
+        font-size: 15px;
     }}
 
     h1 {{
-        color: #0e1117;
-        font-size: 1.8rem;
-        border-bottom: 3px solid #00C49F;
-        padding-bottom: 0.6rem;
-        margin-bottom: 1.5rem;
+        color: #0f172a;
+        font-size: 2.2rem;
+        font-weight: 700;
+        border-bottom: 3px solid #1e40af;
+        padding-bottom: 0.75rem;
+        margin-bottom: 1.75rem;
+        line-height: 1.25;
     }}
+
     h2 {{
-        color: #16213e;
+        color: #1e40af;
         font-size: 1.3rem;
-        border-bottom: 2px solid #0f3460;
+        font-weight: 600;
+        border-bottom: 1px solid #e2e8f0;
         padding-bottom: 0.4rem;
-        margin-top: 2rem;
+        margin-top: 2.25rem;
+        margin-bottom: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
     }}
+
     h3 {{
-        color: #1a1a2e;
+        color: #0f172a;
         font-size: 1.1rem;
+        font-weight: 600;
         margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
     }}
 
-    a {{ color: #0088FE; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
+    p {{
+        margin-bottom: 1rem;
+        text-align: justify;
+    }}
 
-    code {{
-        background: #f0f4f8;
-        padding: 0.15em 0.4em;
-        border-radius: 4px;
-        font-size: 0.88em;
-        color: #0f3460;
+    a {{
+        color: #2563eb;
+        text-decoration: none;
+    }}
+    a:hover {{
+        text-decoration: underline;
+    }}
+
+    em {{
+        color: #64748b;
+        font-size: 0.9em;
+    }}
+
+    ol, ul {{
+        padding-left: 1.5rem;
+        margin-bottom: 1rem;
+    }}
+
+    li {{
+        margin-bottom: 0.5rem;
     }}
 
     blockquote {{
-        border-left: 4px solid #FF8042;
-        margin: 1rem 0;
-        padding: 0.5rem 1rem;
-        background: #fff8f2;
-        font-style: italic;
+        border-left: 4px solid #2563eb;
+        margin: 1.25rem 0;
+        padding: 0.8rem 1.25rem;
+        background: #eff6ff;
+        color: #1e3a8a;
+        border-radius: 0 8px 8px 0;
     }}
-
-    ul {{ padding-left: 1.2rem; }}
-    li {{ margin-bottom: 0.4rem; }}
-
-    em {{ color: #555; }}
-
-    .trust-high {{ color: #27ae60; font-weight: 600; }}
-    .trust-medium {{ color: #f39c12; }}
-    .trust-low {{ color: #e74c3c; }}
 
     hr {{
         border: none;
-        border-top: 1px solid #e0e0e0;
-        margin: 2rem 0;
+        border-top: 1px solid #e2e8f0;
+        margin: 2.5rem 0;
     }}
 
     .footer {{
         font-size: 0.8rem;
-        color: #8B949E;
+        color: #94a3b8;
         text-align: center;
         margin-top: 3rem;
         padding-top: 1rem;
-        border-top: 1px solid #e0e0e0;
+        border-top: 1px solid #e2e8f0;
+    }}
+
+    /* Executive summary highlight */
+    h2 + p {{
+        background: #f8fafc;
+        border-left: 4px solid #1e40af;
+        padding: 1.1rem 1.3rem;
+        border-radius: 0 8px 8px 0;
+        margin-bottom: 1.5rem;
+        font-size: 1.02rem;
+    }}
+
+    @media print {{
+        body {{ max-width: 100%; padding: 1rem; }}
+        h1 {{ font-size: 1.8rem; }}
+        a {{ color: #1e40af; }}
     }}
 </style>
 </head>
 <body>
 {body}
 <div class="footer">
-    Generated by DeepResearch Agent &bull; Version {version}
+    Generated by DeepResearch Agent
 </div>
 </body>
 </html>
@@ -200,7 +255,6 @@ def to_html(report: ReportOutput) -> str:
     return _HTML_TEMPLATE.format(
         title=report.title,
         body=html_body,
-        version=report.version,
     )
 
 
@@ -209,26 +263,164 @@ def to_html(report: ReportOutput) -> str:
 
 def export_to_pdf(report: ReportOutput) -> bytes:
     """
-    Render a ReportOutput to a PDF document.
+    Render a ReportOutput to a professional PDF document using fpdf2.
 
-    Uses WeasyPrint for high-quality CSS-based PDF rendering.
-    Returns the PDF as bytes (suitable for streaming or writing to disk).
-
-    Raises:
-        ImportError: If WeasyPrint is not installed.
-        Exception:   Any rendering errors from WeasyPrint.
+    fpdf2 is a pure-Python library with no system library dependencies.
+    Returns the PDF as bytes.
     """
     try:
-        from weasyprint import HTML  # noqa: PLC0415
+        from fpdf import FPDF  # noqa: PLC0415
     except ImportError as exc:
         raise ImportError(
-            "WeasyPrint is required for PDF export. Install it with: pip install weasyprint"
+            "fpdf2 is required for PDF export. Install it with: uv add fpdf2"
         ) from exc
 
-    html_content = to_html(report)
-    pdf_buffer = BytesIO()
-    HTML(string=html_content).write_pdf(pdf_buffer)
-    return pdf_buffer.getvalue()
+    def safe_str(s: str) -> str:
+        """Strip non-latin-1 chars (em-dash, curly quotes, etc.) to avoid fpdf encoding errors."""
+        replacements = {
+            "\u2014": "-",  # em dash
+            "\u2013": "-",  # en dash
+            "\u2019": "'",  # right single quote
+            "\u2018": "'",  # left single quote
+            "\u201c": '"',  # left double quote
+            "\u201d": '"',  # right double quote
+            "\u2022": "*",  # bullet
+            "\u2026": "...",  # ellipsis
+            "\u00a0": " ",  # non-breaking space
+            "\u2212": "-",  # minus sign
+        }
+        for char, replacement in replacements.items():
+            s = s.replace(char, replacement)
+        return s.encode("latin-1", errors="replace").decode("latin-1")
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+    pdf.set_margins(20, 18, 20)
+
+    def section_header(text: str):
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_text_color(30, 64, 175)
+        pdf.set_fill_color(239, 246, 255)
+        pdf.cell(0, 8, safe_str(text.upper()), ln=True, fill=True)
+        pdf.ln(3)
+        pdf.set_text_color(30, 30, 30)
+
+    def subheading(text: str):
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(15, 23, 42)
+        pdf.multi_cell(0, 6, safe_str(text), align="L")
+        pdf.ln(1)
+        pdf.set_text_color(30, 30, 30)
+
+    def body_paragraph(text: str):
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(31, 41, 55)
+        pdf.multi_cell(0, 5.5, safe_str(text), align="L")
+        pdf.ln(2)
+
+    # ── Title ──────────────────────────────────────────────────────────────────
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(30, 64, 175)  # deep blue
+    pdf.multi_cell(0, 9, safe_str(report.title), align="L")
+    pdf.ln(2)
+
+    # Horizontal rule
+    pdf.set_draw_color(30, 64, 175)
+    pdf.set_line_width(0.6)
+    pdf.line(20, pdf.get_y(), 190, pdf.get_y())
+    pdf.ln(5)
+
+    # ── Executive Summary ──────────────────────────────────────────────────────
+    section_header("Executive Summary")
+    pdf.set_fill_color(248, 250, 252)
+    pdf.set_font("Helvetica", "I", 9.5)
+    pdf.set_text_color(30, 41, 59)
+    pdf.multi_cell(0, 5.5, safe_str(report.executive_summary.strip()), align="L", fill=True)
+    pdf.ln(4)
+    pdf.set_text_color(30, 30, 30)
+
+    # ── Introduction & Background ──────────────────────────────────────────────
+    if getattr(report, "introduction", None) and report.introduction.strip():
+        section_header("Context & Introduction")
+        for paragraph in report.introduction.strip().split("\n\n"):
+            if paragraph.strip():
+                body_paragraph(paragraph.strip())
+        pdf.ln(2)
+
+    # ── Detailed Analysis ──────────────────────────────────────────────────────
+    if getattr(report, "detailed_analysis", None) and report.detailed_analysis.strip():
+        section_header("In-Depth Analysis")
+        analysis_blocks = report.detailed_analysis.strip().split("\n")
+        for block in analysis_blocks:
+            b = block.strip()
+            if not b:
+                continue
+            if b.startswith("#"):
+                clean_h = b.lstrip("#").strip()
+                subheading(clean_h)
+            elif b.startswith("**") and b.endswith("**"):
+                subheading(b.strip("*"))
+            else:
+                body_paragraph(b)
+        pdf.ln(2)
+
+    # ── Key Findings & Takeaways ───────────────────────────────────────────────
+    if report.key_findings:
+        section_header("Key Findings & Strategic Takeaways")
+        confidence_symbols = {"high": "[HIGH]", "medium": "[MED]", "low": "[LOW]"}
+
+        for i, finding in enumerate(report.key_findings, 1):
+            conf_label = confidence_symbols.get(finding.confidence, "")
+            pdf.set_font("Helvetica", "B", 9.5)
+            pdf.set_text_color(15, 23, 42)
+            pdf.multi_cell(
+                0, 5.5, safe_str(f"{i}. {finding.claim.strip()}  ({conf_label})"), align="L"
+            )
+            pdf.ln(1.5)
+
+    # ── Emerging Trends ────────────────────────────────────────────────────────
+    if report.emerging_trends:
+        section_header("Emerging Trends & Market Outlook")
+        for trend in report.emerging_trends:
+            pdf.set_font("Helvetica", "", 9.5)
+            pdf.set_x(22)
+            pdf.multi_cell(0, 5.5, safe_str(f"* {trend.strip()}"), align="L")
+            pdf.ln(1)
+        pdf.ln(2)
+
+    # ── Key Sources ────────────────────────────────────────────────────────────
+    if report.sources:
+        section_header("References & Key Sources")
+        seen_urls: set[str] = set()
+        src_idx = 1
+        for s in report.sources:
+            if s.source_url not in seen_urls:
+                seen_urls.add(s.source_url)
+                pdf.set_font("Helvetica", "", 8.5)
+                pdf.set_text_color(30, 64, 175)
+                pdf.set_x(22)
+                title_str = s.title.strip() or s.source_url
+                pdf.multi_cell(
+                    0, 5, safe_str(f"{src_idx}. {title_str} - {s.source_url}"), align="L"
+                )
+                src_idx += 1
+                if src_idx > 20:  # Cap bibliography items to 20
+                    break
+        pdf.set_text_color(30, 30, 30)
+        pdf.ln(4)
+
+    # ── Footer ─────────────────────────────────────────────────────────────────
+    pdf.set_draw_color(226, 232, 240)
+    pdf.set_line_width(0.3)
+    pdf.line(20, pdf.get_y(), 190, pdf.get_y())
+    pdf.ln(3)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(148, 163, 184)
+    pdf.cell(0, 5, "Generated by DeepResearch Agent", ln=True, align="C")
+
+    return bytes(pdf.output())
 
 
 def export_to_pdf_file(report: ReportOutput, output_path: str) -> None:

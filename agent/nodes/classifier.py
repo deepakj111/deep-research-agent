@@ -14,7 +14,6 @@ from utils.callbacks import TokenCostCallback
 class ClassifierOutput(BaseModel):
     difficulty: Literal["narrow", "broad", "ambiguous"]
     reasoning: str
-    suggested_num_questions: int
     relevant_sources: list[Literal["web", "arxiv", "github"]]
 
 
@@ -30,14 +29,26 @@ CLASSIFIER_PROMPT = """Classify this research query:
 Query: {query}
 
 1. Difficulty levels:
-- narrow: specific, well-defined topic → suggest 3 sub-questions
-- broad: covers multiple domains or time periods → suggest 5-6 sub-questions
-- ambiguous: unclear intent, needs decomposition → suggest 4 sub-questions
+- narrow: specific, well-defined topic (e.g. "silver investment", "current Bitcoin price")
+- broad: covers multiple domains or time periods (e.g. "history of AI regulation")
+- ambiguous: unclear intent, needs decomposition
 
-2. Relevant sources (select only what is appropriate):
-- web: web search (market trends, news, financial recommendations, general knowledge). Included for almost all queries.
-- arxiv: academic papers (scientific research, physics, ML papers, academic algorithms). DO NOT select for general news, financial, market, or simple coding questions.
-- github: code repositories & libraries (software engineering, open-source repos, API implementations). DO NOT select for non-software topics like news, finance, science without code, etc.
+2. Relevant sources — apply STRICT selection rules:
+
+- web: ALWAYS include for any query. Covers news, market data, financial analysis, product reviews, general research.
+
+- arxiv: ONLY select when the query is explicitly about scientific/academic research: physics papers, ML algorithms,
+  medical studies, academic theory. NEVER select for:
+  * Financial queries (investments, stocks, commodities, ETFs, funds, portfolios)
+  * Market analysis or economic queries
+  * Business, industry, or company research
+  * General technology questions that are not about academic ML/AI research
+  * News and current events
+  Examples of queries that should NOT use arxiv: "silver investment", "best ETFs 2025", "AI startups to watch",
+  "housing market trends", "how does GPT work", "cloud computing cost comparison"
+
+- github: ONLY select when the query involves software implementations, open-source libraries, APIs, or code.
+  NEVER select for finance, market research, news, or non-software topics.
 
 Output JSON matching the schema."""
 
@@ -78,7 +89,6 @@ async def run(state: ResearchState) -> dict:
     thought_entries.append(
         f"[Classifier] Query classified as '{result.difficulty}'. "
         f"Selected sources: {sources}. "
-        f"Suggested {result.suggested_num_questions} sub-questions. "
         f"Reason: {result.reasoning}"
     )
 
