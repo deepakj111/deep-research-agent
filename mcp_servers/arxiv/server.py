@@ -28,18 +28,16 @@ def _parse_atom(xml_text: str) -> list[dict]:
         arxiv_id = arxiv_id_raw.split("/abs/")[-1] if "/abs/" in arxiv_id_raw else arxiv_id_raw
         authors = [a.findtext(f"{ARXIV_NS}name") or "" for a in entry.findall(f"{ARXIV_NS}author")]
         published = (entry.findtext(f"{ARXIV_NS}published") or "")[:10]
-        papers.append(
-            {
-                "arxiv_id": arxiv_id,
-                "title": (entry.findtext(f"{ARXIV_NS}title") or "").strip().replace("\n", " "),
-                "abstract": (entry.findtext(f"{ARXIV_NS}summary") or "").strip().replace("\n", " "),
-                "authors": authors,
-                "published_date": published,
-                "url": arxiv_id_raw,
-                "citation_count": 0,
-                "trust_score": 0.0,
-            }
-        )
+        papers.append({
+            "arxiv_id": arxiv_id,
+            "title": (entry.findtext(f"{ARXIV_NS}title") or "").strip().replace("\n", " "),
+            "abstract": (entry.findtext(f"{ARXIV_NS}summary") or "").strip().replace("\n", " "),
+            "authors": authors,
+            "published_date": published,
+            "url": arxiv_id_raw,
+            "citation_count": 0,
+            "trust_score": 0.0,
+        })
     return papers
 
 

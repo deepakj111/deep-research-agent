@@ -82,15 +82,13 @@ async def get_mcp_tool(server_name: str, url: str, jwt_token: str, tool_name: st
                 return tool
 
         # Connect and discover tools
-        client = MultiServerMCPClient(
-            {
-                server_name: {
-                    "url": url,
-                    "transport": "sse",
-                    "headers": {"Authorization": f"Bearer {jwt_token}"},
-                }
+        client = MultiServerMCPClient({
+            server_name: {
+                "url": url,
+                "transport": "sse",
+                "headers": {"Authorization": f"Bearer {jwt_token}"},
             }
-        )
+        })
         tools = await client.get_tools()
         _mcp_cache[cache_key] = (client, tools)
 

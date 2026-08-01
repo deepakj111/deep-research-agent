@@ -212,7 +212,7 @@ The budget guard sits as a **conditional edge** in the LangGraph graph, wrapping
 ```python
 workflow.add_conditional_edges(
     "critic",
-    check_budget,         # ← Budget guard function
+    check_budget,  # ← Budget guard function
     {
         "continue": "planner",
         "synthesize": "synthesizer",

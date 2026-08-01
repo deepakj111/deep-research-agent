@@ -207,19 +207,19 @@ The agent state is a `TypedDict` defined in `agent/state.py`:
 
 ```python
 class ResearchState(TypedDict):
-    query: str                                                  # Input
-    profile: str                                                # "fast" or "deep"
+    query: str  # Input
+    profile: str  # "fast" or "deep"
     run_id: str
-    query_difficulty: str                                       # "narrow" | "broad" | "ambiguous"
+    query_difficulty: str  # "narrow" | "broad" | "ambiguous"
     subquestions: list[str]
     approved_plan: bool
-    findings: Annotated[list[ResearchFindings], operator.add]   # Parallel-safe append
+    findings: Annotated[list[ResearchFindings], operator.add]  # Parallel-safe append
     critique: CritiqueOutput | None
     iteration_count: int
     final_report: ReportOutput | None
     run_metadata: RunMetadata
-    error_log: Annotated[list[str], operator.add]               # Parallel-safe append
-    thought_log: Annotated[list[str], operator.add]             # Parallel-safe append
+    error_log: Annotated[list[str], operator.add]  # Parallel-safe append
+    thought_log: Annotated[list[str], operator.add]  # Parallel-safe append
 ```
 
 **Key design decisions:**

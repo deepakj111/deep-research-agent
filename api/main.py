@@ -233,14 +233,12 @@ async def _stream_graph_events(
                     input_str = json.dumps(clean_in or raw_input, indent=2, default=str)
                 else:
                     input_str = str(raw_input)
-                yield sse(
-                    {
-                        "type": "node_start",
-                        "node": node_name,
-                        "input": input_str,
-                        "timestamp": now_iso,
-                    }
-                )
+                yield sse({
+                    "type": "node_start",
+                    "node": node_name,
+                    "input": input_str,
+                    "timestamp": now_iso,
+                })
 
             elif kind == "on_chain_end" and event["name"] in MAIN_NODES:
                 node_name = event["name"]
@@ -271,14 +269,12 @@ async def _stream_graph_events(
                 else:
                     output_str = str(output_obj)
 
-                yield sse(
-                    {
-                        "type": "node_end",
-                        "node": node_name,
-                        "output": output_str,
-                        "timestamp": now_iso,
-                    }
-                )
+                yield sse({
+                    "type": "node_end",
+                    "node": node_name,
+                    "output": output_str,
+                    "timestamp": now_iso,
+                })
 
             elif kind == "on_tool_start":
                 tool_name = event.get("name", "tool")
@@ -287,14 +283,12 @@ async def _stream_graph_events(
                     input_str = json.dumps(raw_input, indent=2)
                 else:
                     input_str = str(raw_input)
-                yield sse(
-                    {
-                        "type": "tool_call",
-                        "tool": tool_name,
-                        "input": input_str,
-                        "timestamp": now_iso,
-                    }
-                )
+                yield sse({
+                    "type": "tool_call",
+                    "tool": tool_name,
+                    "input": input_str,
+                    "timestamp": now_iso,
+                })
 
             elif kind == "on_tool_end":
                 tool_name = event.get("name", "tool")
@@ -335,15 +329,13 @@ async def _stream_graph_events(
 
                 full_output_str = "\n\n".join(items_detail)
 
-                yield sse(
-                    {
-                        "type": "tool_result",
-                        "tool": tool_name,
-                        "count": count,
-                        "full_output": full_output_str,
-                        "timestamp": now_iso,
-                    }
-                )
+                yield sse({
+                    "type": "tool_result",
+                    "tool": tool_name,
+                    "count": count,
+                    "full_output": full_output_str,
+                    "timestamp": now_iso,
+                })
 
             elif kind == "on_chat_model_start":
                 model_name = event.get("name", "LLM")
@@ -368,14 +360,12 @@ async def _stream_graph_events(
                         else:
                             msg_list.append(str(m))
                 formatted_prompt = "\n\n".join(msg_list) if msg_list else str(input_msgs)
-                yield sse(
-                    {
-                        "type": "llm_start",
-                        "model": model_name,
-                        "prompt": formatted_prompt,
-                        "timestamp": now_iso,
-                    }
-                )
+                yield sse({
+                    "type": "llm_start",
+                    "model": model_name,
+                    "prompt": formatted_prompt,
+                    "timestamp": now_iso,
+                })
 
             elif kind == "on_chat_model_end":
                 model_name = event.get("name", "LLM")
@@ -391,14 +381,12 @@ async def _stream_graph_events(
                 else:
                     resp_str = str(output_obj)
 
-                yield sse(
-                    {
-                        "type": "llm_end",
-                        "model": model_name,
-                        "response": resp_str,
-                        "timestamp": now_iso,
-                    }
-                )
+                yield sse({
+                    "type": "llm_end",
+                    "model": model_name,
+                    "response": resp_str,
+                    "timestamp": now_iso,
+                })
 
             elif kind == "on_chat_model_stream":
                 chunk = event["data"].get("chunk")
@@ -488,18 +476,16 @@ async def stream_research(payload: ResearchRequest, request: Request, tracer=Dep
                     estimated_cost = estimate_cost(
                         settings.default_model, n_questions * 800, n_questions * 400
                     )
-                    yield sse(
-                        {
-                            "type": "hitl_interrupt",
-                            "thread_id": run_id,
-                            "query_difficulty": difficulty,
-                            "relevant_sources": sources,
-                            "subquestions": subquestions,
-                            "estimated_subquestions": n_questions,
-                            "estimated_cost_usd": round(estimated_cost, 4),
-                            "message": "Plan ready for approval. POST /research/approve to continue.",
-                        }
-                    )
+                    yield sse({
+                        "type": "hitl_interrupt",
+                        "thread_id": run_id,
+                        "query_difficulty": difficulty,
+                        "relevant_sources": sources,
+                        "subquestions": subquestions,
+                        "estimated_subquestions": n_questions,
+                        "estimated_cost_usd": round(estimated_cost, 4),
+                        "message": "Plan ready for approval. POST /research/approve to continue.",
+                    })
 
         finally:
             if writer_completed:

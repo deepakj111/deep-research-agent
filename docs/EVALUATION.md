@@ -191,16 +191,18 @@ With summary statistics and per-domain breakdowns.
 After evaluating each query, the scores are persisted to the SQLite tracer:
 
 ```python
-await tracer.log_eval_scores(EvalScoreRecord(
-    run_id=run_id,
-    faithfulness=scores.faithfulness,
-    answer_relevancy=scores.answer_relevancy,
-    source_coverage=scores.source_coverage,
-    citation_accuracy=scores.citation_accuracy,
-    coherence=scores.coherence,
-    normalized_average=scores.normalized_average,
-    overall_notes=scores.overall_notes,
-))
+await tracer.log_eval_scores(
+    EvalScoreRecord(
+        run_id=run_id,
+        faithfulness=scores.faithfulness,
+        answer_relevancy=scores.answer_relevancy,
+        source_coverage=scores.source_coverage,
+        citation_accuracy=scores.citation_accuracy,
+        coherence=scores.coherence,
+        normalized_average=scores.normalized_average,
+        overall_notes=scores.overall_notes,
+    )
+)
 ```
 
 This allows historical score tracking and trend analysis via the observability dashboard.
