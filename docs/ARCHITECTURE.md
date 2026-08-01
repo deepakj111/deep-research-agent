@@ -63,7 +63,7 @@ The system follows a **microservices architecture** with clear separation of con
 
 | Layer | Technology |
 |---|---|
-| Agent orchestration | LangGraph `StateGraph` with `SqliteSaver` checkpointing |
+| Agent orchestration | LangGraph `StateGraph` with `HybridSqliteSaver` checkpointing |
 | Primary LLM | OpenAI GPT-5-mini (`langchain-openai`) |
 | Secondary LLM | OpenAI GPT-5-mini (`langchain-openai`) |
 | Tool protocol | Model Context Protocol (MCP) via `FastMCP` over SSE |
@@ -80,8 +80,8 @@ The system follows a **microservices architecture** with clear separation of con
 
 The agent is defined as a **LangGraph `StateGraph`** in `agent/graph.py`. The graph is compiled with:
 
-- **`SqliteSaver` checkpointer** — persists state across process restarts, enabling resumable runs.
-- **`interrupt_before=["planner"]`** — implements Human-in-the-Loop (HITL) by pausing the graph before the planner node runs, allowing the user to review and optionally edit the research plan.
+- **`HybridSqliteSaver` checkpointer** — persists state across process restarts with dual sync and async SQLite access (in WAL mode), enabling reliable state management and resumable runs.
+- **`interrupt_before=["supervisor"]`** — implements Human-in-the-Loop (HITL) by running the classifier and planner to generate initial sub-questions, then pausing the graph before the supervisor node dispatches parallel agents. This allows the user to review and optionally edit the research plan.
 
 ### Graph Flow
 
@@ -89,8 +89,9 @@ The agent is defined as a **LangGraph `StateGraph`** in `agent/graph.py`. The gr
 ┌─────────┐     ┌─────────┐     ┌────────────┐
 │Classifier│────▸│ Planner │────▸│ Supervisor │
 └─────────┘     └─────────┘     └────────────┘
-                  [HITL ↑]           │
-                  interrupt          │ Send() × 3N
+                                  [HITL ↑]
+                                  interrupt
+                                     │ Send() × 3N
                                      ▼
                               ┌─────────────┐
                               │  web_agent   │─┐
@@ -143,9 +144,9 @@ The graph uses **conditional edges** after the critic node, mediated by the `che
 
 - **Model**: Configurable via `settings.default_model`
 - **Purpose**: Generates research sub-questions based on the classified difficulty and user profile
-- **HITL**: The graph is interrupted *before* this node. The API emits an SSE `hitl_interrupt` event on the first iteration. The user can:
-  - **Approve**: The planner runs normally
-  - **Edit**: The user provides `edited_subquestions` via `POST /research/approve`, which are injected directly into state (bypassing the planner LLM entirely)
+- **HITL**: The graph is interrupted *before* the supervisor node (after the classifier and planner generate the research plan). The API emits an SSE `hitl_interrupt` event on the first iteration. The user can:
+  - **Approve**: The graph resumes execution to the supervisor node
+  - **Edit**: The user provides `edited_subquestions` via `POST /research/approve`, which are injected directly into state before resuming
   - **Reject**: The run is marked as `rejected` in the tracer
 - **Iterative Drill-down**: On subsequent loops (`iteration_count > 0`), the planner dynamically generates follow-up sub-questions based on the critic's `missing_areas` feedback to independently drill deeper into the content without repeated HITL prompting.
 - **Prompts**: Loaded from `agent/prompts/planner.yaml`
@@ -211,6 +212,7 @@ class ResearchState(TypedDict):
     profile: str  # "fast" or "deep"
     run_id: str
     query_difficulty: str  # "narrow" | "broad" | "ambiguous"
+    relevant_sources: list[str]  # Selected source types: ["web", "arxiv", "github"]
     subquestions: list[str]
     approved_plan: bool
     findings: Annotated[list[ResearchFindings], operator.add]  # Parallel-safe append
@@ -241,7 +243,7 @@ Two profile configurations (`config/profiles/fast.yaml` and `deep.yaml`) control
 | `synthesis_depth` | brief | comprehensive |
 | `query_decomposition` | breadth-first | depth-first |
 
-> **Note:** The LLM model is not per-profile — it is a global setting controlled by `settings.default_model` (default: `gpt-5`) and `settings.secondary_model` (default: `gpt-5-mini`). A third query decomposition strategy, `hypothesis-driven`, is also implemented and can be used in custom profiles.
+> **Note:** The LLM model is not per-profile — it is a global setting controlled by `settings.default_model` (default: `gpt-5-mini`) and `settings.secondary_model` (default: `gpt-5-mini`). Per-node temperatures (`classifier`: 0.0, `planner`: 0.2, `synthesis`: 0.3, `critic`: 0.0) fine-tune creativity versus determinism per node. A third query decomposition strategy, `hypothesis-driven`, is also implemented and can be used in custom profiles.
 
 ---
 
@@ -353,7 +355,7 @@ The FastAPI gateway (`api/main.py`) exposes:
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `POST /research/stream` | POST | Start a new research run, stream SSE events |
-| `POST /research/approve` | POST | Resume a run paused at the HITL planner interrupt |
+| `POST /research/approve` | POST | Resume a run paused at the HITL supervisor interrupt |
 | `GET /research/state/{thread_id}` | GET | Get current graph state for a thread |
 | `GET /research/report/{thread_id}` | GET | Get the final completed report as structured JSON |
 | `GET /research/report/{thread_id}/pdf` | GET | Download the final report as a styled PDF |
@@ -362,17 +364,21 @@ The FastAPI gateway (`api/main.py`) exposes:
 | `GET /research/runs` | GET | List recent runs from observability DB |
 | `GET /research/runs/{run_id}` | GET | Get full detail for a single run |
 | `GET /health` | GET | Health check |
+| `GET /health/deep` | GET | Deep health check (validates SQLite tracer, MCP servers, API keys) |
 
 ### SSE Event Types
 
 | Event Type | When | Payload |
 |---|---|---|
-| `node_start` | A graph node begins execution | `{ node: string }` |
-| `tool_call` | An MCP tool is invoked | `{ tool: string, input: string }` |
-| `tool_result` | An MCP tool returns | `{ tool: string, count: int }` |
+| `node_start` | A graph node begins execution | `{ node: string, input: string, timestamp: string }` |
+| `node_end` | A graph node finishes execution | `{ node: string, output: string, timestamp: string }` |
+| `tool_call` | An MCP tool is invoked | `{ tool: string, input: string, timestamp: string }` |
+| `tool_result` | An MCP tool returns | `{ tool: string, count: int, full_output: string, timestamp: string }` |
+| `llm_start` | LLM invocation starts | `{ model: string, prompt: string, timestamp: string }` |
+| `llm_end` | LLM invocation completes | `{ model: string, response: string, timestamp: string }` |
 | `token` | LLM streaming chunk | `{ content: string }` |
-| `hitl_interrupt` | Graph paused before planner | `{ thread_id, query_difficulty, estimated_cost_usd }` |
-| `complete` | Writer finished, report ready | `{ run_id: string }` |
+| `hitl_interrupt` | Graph paused before supervisor | `{ thread_id, query_difficulty, relevant_sources, subquestions, estimated_cost_usd }` |
+| `complete` | Writer finished, report ready | `{ run_id: string, timestamp: string }` |
 
 ### Rate Limiting
 

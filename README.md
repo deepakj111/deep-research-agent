@@ -11,7 +11,7 @@ Built with **LangGraph** for stateful agent orchestration, **Model Context Proto
 | Feature | Description |
 |---|---|
 | **MCP Tool Servers** | Three custom `FastMCP` servers (Web Search, arXiv, GitHub) running as independent microservices over HTTP/SSE with JWT authentication and SQLite caching. |
-| **LangGraph Orchestration** | Stateful, resumable agent graph with `SqliteSaver` checkpointing and Human-in-the-Loop (HITL) plan approval via `interrupt_before`. |
+| **LangGraph Orchestration** | Stateful, resumable agent graph with `HybridSqliteSaver` checkpointing and Human-in-the-Loop (HITL) plan approval via `interrupt_before=["supervisor"]`. |
 | **Parallel Fan-Out** | Supervisor dispatches all sub-questions to all 3 agents concurrently using LangGraph's `Send` API — *N* questions × 3 agents = *3N* parallel tasks. |
 | **Multi-Model Synthesis** | Primary and secondary model synthesis (GPT-5-mini default), followed by an automated fallback and contradiction tracking step. |
 | **Critic Loop** | Quality-gated iteration: a critic node scores coverage, recency, depth, and source diversity, then decides whether to loop for more research or proceed to synthesis. |
@@ -156,7 +156,7 @@ deep-research-agent/
 │   ├── logger.py                 # Centralized logging setup
 │   └── report_formatter.py       # ReportOutput → Markdown / HTML / PDF
 ├── tests/
-│   ├── unit/                     # 131 unit tests
+│   ├── unit/                     # 138 unit tests
 │   └── integration/              # Full pipeline integration test
 ├── .github/workflows/
 │   ├── ci.yml                    # Lint + Test + Docker build

@@ -81,7 +81,7 @@ All Dockerfiles follow production best practices:
 | Service | Probe | Interval | Retries |
 |---|---|---|---|
 | MCP servers | `curl -f http://localhost:{port}/health` | 10s | 3 |
-| Agent API | `curl -f http://localhost:8080/health` | 15s | 3 |
+| Agent API | `curl -f http://localhost:8080/health` (or `/health/deep`) | 15s | 3 |
 | Streamlit | `curl -f http://localhost:8501/_stcore/health` | 15s | 3 |
 
 ### Environment Variables
@@ -108,7 +108,7 @@ GITHUB_MCP_URL: http://github-mcp:8003/sse
 
 ## Fault Tolerance
 
-The agent implements a **three-layer defence** against tool failures:
+The agent implements state checkpointing with `HybridSqliteSaver` (supporting dual synchronous and asynchronous SQLite access in WAL mode to persist graph states and HITL interrupts cleanly) along with a **three-layer defence** against tool failures:
 
 ### Layer 1: Retry Policies (`agent/retry_policy.py`)
 

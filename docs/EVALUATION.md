@@ -34,7 +34,7 @@ This score is used as:
 
 **File**: `evaluation/evaluator.py`
 
-The evaluator uses the primary model (GPT-5) with `temperature=0` and structured output (`EvalScores` Pydantic model) to ensure deterministic, parseable scoring.
+The evaluator uses the primary model (`settings.default_model`, default `gpt-5-mini`) with `temperature=0` and structured output (`EvalScores` Pydantic model) to ensure deterministic, parseable scoring.
 
 ### How It Works
 
@@ -169,10 +169,10 @@ make benchmark
 
 ### Two-Phase Execution
 
-The LangGraph graph is compiled with `interrupt_before=["planner"]`, requiring two `ainvoke()` calls per benchmark query:
+The LangGraph graph is compiled with `interrupt_before=["supervisor"]`, requiring two `ainvoke()` calls per benchmark query:
 
-1. **Phase 1**: `graph.ainvoke(initial_state)` → classifier runs, graph pauses before planner
-2. **Phase 2**: `graph.ainvoke(None)` → resumes through planner → supervisor → sub-agents → critic → synthesizer → writer
+1. **Phase 1**: `graph.ainvoke(initial_state)` → classifier and planner run, generating sub-questions; graph pauses before supervisor
+2. **Phase 2**: `graph.ainvoke(None)` → resumes through supervisor → sub-agents → critic → synthesizer → writer
 
 This auto-approves all plans without human review. The benchmark measures output quality, not HITL UX.
 
