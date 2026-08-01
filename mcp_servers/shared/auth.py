@@ -43,8 +43,14 @@ def require_auth(
         if not token:
             raise PermissionError("Missing Authorization header — Bearer token required.")
 
+        secret = (
+            os.environ.get("MCP_JWT_SECRET")
+            or getattr(typing.cast(typing.Any, ctx).request_context, "mcp_jwt_secret", "")
+            or "deep-research-agent-mcp-jwt-secret-key-2026"
+        )
+
         try:
-            jwt.decode(token, SECRET, algorithms=["HS256"])
+            jwt.decode(token, secret, algorithms=["HS256"])
         except jwt.ExpiredSignatureError as e:
             raise PermissionError("JWT token has expired.") from e
         except jwt.InvalidTokenError as e:

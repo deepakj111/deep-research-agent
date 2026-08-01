@@ -210,10 +210,12 @@ class TestMCPServerToolSchemas:
         from unittest.mock import AsyncMock, MagicMock, patch
 
         import utils.auth as auth_mod
+        from config.settings import settings
         from mcp_servers.web_search.server import search_web
 
         monkeypatch.setenv("MCP_JWT_SECRET", "testsecret")
         monkeypatch.setenv("TAVILY_API_KEY", "testtavily")
+        monkeypatch.setattr(settings, "mcp_jwt_secret", "testsecret")
 
         token = auth_mod.get_jwt_token()
 

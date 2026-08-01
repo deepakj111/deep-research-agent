@@ -23,6 +23,7 @@ import streamlit as st
 from app.components.auth import require_auth
 from app.components.theme import (
     COLORS,
+    format_ist,
     hero_header,
     inject_theme,
     metric_card,
@@ -83,7 +84,7 @@ runs_df = runs_df.rename(
         "query": "Query",
         "profile": "Profile",
         "status": "Status",
-        "started_at": "Started",
+        "started_at": "Started (IST)",
         "total_cost_usd": "Cost (USD)",
         "final_score": "Quality Score",
     }
@@ -93,6 +94,12 @@ runs_df = runs_df.rename(
 if "Query" in runs_df.columns:
     runs_df["Query"] = runs_df["Query"].apply(
         lambda x: (x[:60] + "...") if isinstance(x, str) and len(x) > 60 else x
+    )
+
+# Format started time into IST
+if "Started (IST)" in runs_df.columns:
+    runs_df["Started (IST)"] = runs_df["Started (IST)"].apply(
+        lambda x: format_ist(x, fmt="%d %b %Y, %I:%M:%S %p IST") if x else "—"
     )
 
 # Format cost

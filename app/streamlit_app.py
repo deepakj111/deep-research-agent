@@ -71,7 +71,7 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     st.markdown(
-        '<div class="glass-panel animate-in">'
+        '<div class="white-panel animate-in">'
         '<h4 style="margin-top:0;">🧠 Intelligent Research</h4>'
         "<p>Planner-Executor-Critic loop decomposes queries, "
         "gathers multi-source evidence, and iterates until "
@@ -82,7 +82,7 @@ with col1:
 
 with col2:
     st.markdown(
-        '<div class="glass-panel animate-in">'
+        '<div class="white-panel animate-in">'
         '<h4 style="margin-top:0;">🔧 MCP Architecture</h4>'
         "<p>Three independent MCP servers over HTTP/SSE with "
         "JWT authentication, SQLite caching, and per-tool "
@@ -93,7 +93,7 @@ with col2:
 
 with col3:
     st.markdown(
-        '<div class="glass-panel animate-in">'
+        '<div class="white-panel animate-in">'
         '<h4 style="margin-top:0;">📊 Full Observability</h4>'
         "<p>Every run is traced: node-level latency, token costs, "
         "tool call success rates, and LLM-as-judge quality scores "

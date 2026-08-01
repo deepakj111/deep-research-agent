@@ -46,3 +46,12 @@ repos:
         args: ["-ll", "-ii"]
         files: ^(agent|mcp_servers|api|utils)/
         exclude: tests/
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest unit tests
+        entry: uv run pytest tests/unit
+        language: system
+        pass_filenames: false
+        always_run: true

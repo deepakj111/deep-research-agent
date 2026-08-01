@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     web_search_mcp_url: str = "http://localhost:8001/sse"
     arxiv_mcp_url: str = "http://localhost:8002/sse"
     github_mcp_url: str = "http://localhost:8003/sse"
-    mcp_jwt_secret: str = ""
+    mcp_jwt_secret: str = "deep-research-agent-mcp-jwt-secret-key-2026"
 
     # External APIs
     tavily_api_key: str = ""

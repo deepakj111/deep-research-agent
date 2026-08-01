@@ -31,7 +31,7 @@ import httpx
 import streamlit as st
 
 from app.components.auth import require_auth
-from app.components.theme import hero_header, inject_theme, metric_card
+from app.components.theme import format_ist, hero_header, inject_theme, metric_card
 
 # ────────────────────────── Config ────────────────────────────────────────────
 
@@ -323,13 +323,45 @@ def _format_payload_view(payload_raw: Any) -> str:
     return f'<div class="json-view-container" style="white-space:pre-wrap;">{escaped_text}</div>'
 
 
+def _render_status_bar(
+    status_text: str,
+    start_time: float | None,
+    is_completed: bool = False,
+    elapsed_frozen: float | None = None,
+) -> str:
+    """Render a single-line status bar with a ticking or frozen stopwatch."""
+    if is_completed and elapsed_frozen is not None:
+        elapsed_sec = int(elapsed_frozen)
+        badge_class = "stopwatch-badge stopped"
+        badge_icon = "🏁 PDF Generated"
+    else:
+        start_t = start_time or time.perf_counter()
+        elapsed_sec = int(max(0, time.perf_counter() - start_t))
+        badge_class = "stopwatch-badge running"
+        badge_icon = "⏱️ Running"
+
+    mins, secs = divmod(elapsed_sec, 60)
+    time_str = f"{mins:02d}:{secs:02d}"
+
+    return (
+        f'<div class="status-bar-container">'
+        f'<div class="status-bar-text">'
+        f'<span style="font-size:1.1rem;">⚡</span>'
+        f"<span>Current Status: <b>{html.escape(status_text)}</b></span>"
+        f"</div>"
+        f'<div class="{badge_class}">{badge_icon} — {time_str}</div>'
+        f"</div>"
+    )
+
+
 def _format_thought_card(event: dict) -> str | None:
     """Convert an SSE event into a styled HTML thought-card div with full details."""
     etype = event.get("type", "")
     if etype not in _EVENT_EMOJIS:
         return None
     emoji = _EVENT_EMOJIS[etype]
-    ts = event.get("timestamp") or time.strftime("%H:%M:%S")
+    ts_raw = event.get("timestamp")
+    ts = format_ist(ts_raw, fmt="%I:%M:%S %p IST")
 
     if etype == "node_start":
         node = event.get("node", "Agent")
@@ -515,6 +547,9 @@ def _hitl_dialog(hitl_event: dict, run_id: str):
         for i, sq in enumerate(subquestions, 1):
             st.markdown(f"**{i}.** {sq}")
     st.info(hitl_event.get("message", ""))
+    st.warning(
+        "🔒 **Decision Required**: Select either **Approve & Continue** or **Reject & Cancel** to complete plan approval."
+    )
 
     approve_col, reject_col = st.columns(2)
     with approve_col:
@@ -591,7 +626,11 @@ def _render_history_sidebar(runs: list[dict]):
         query = run.get("query", "Unknown query")
         status = run.get("status", "unknown")
         cost = run.get("total_cost_usd")
-        started = run.get("started_at", "")[:16].replace("T", " ") if run.get("started_at") else ""
+        started = (
+            format_ist(run.get("started_at"), fmt="%d %b %I:%M %p IST")
+            if run.get("started_at")
+            else ""
+        )
 
         is_active = run_id == st.session_state.active_run_id
         card_class = "run-card active" if is_active else "run-card"
@@ -737,7 +776,12 @@ def _run_research(query: str, profile: str):
     st.session_state.active_run_id = placeholder_id
     st.session_state.mode = "streaming"
 
-    activity_ph = st.empty()
+    status_ph = st.empty()
+    status_text = "Initializing research pipeline..."
+    status_ph.markdown(
+        _render_status_bar(status_text, run_state["start_time"]),
+        unsafe_allow_html=True,
+    )
 
     st.markdown("### 🧠 Full Agent Chain & Thought Process Trace")
     log_ph = st.empty()
@@ -789,20 +833,39 @@ def _run_research(query: str, profile: str):
                     run_state["node_count"] += 1
                     node = event.get("node", "Agent")
                     label = _NODE_LABELS.get(node, node)
-                    activity_ph.markdown(
-                        f'<div class="live-activity"><span class="status-dot running"></span>'
-                        f" Active Phase: <b>{label}</b></div>",
+                    desc = _NODE_DESCRIPTIONS.get(node, "Processing step...")
+                    status_text = f"{label} — {desc}"
+                    status_ph.markdown(
+                        _render_status_bar(status_text, run_state["start_time"]),
                         unsafe_allow_html=True,
                     )
                     st.toast(f"🔄 {label} started", icon="🔄")
                 elif etype == "tool_call":
                     run_state["tool_count"] += 1
+                    tool = event.get("tool", "tool")
+                    status_text = f"Invoking {tool}..."
+                    status_ph.markdown(
+                        _render_status_bar(status_text, run_state["start_time"]),
+                        unsafe_allow_html=True,
+                    )
                 elif etype == "tool_result":
                     run_state["source_count"] += event.get("count", 0)
-                    st.toast(f"✅ {event.get('tool', 'Tool')} returned results", icon="✅")
+                    tool = event.get("tool", "tool")
+                    count = event.get("count", 0)
+                    status_text = f"Retrieved {count} results from {tool}"
+                    status_ph.markdown(
+                        _render_status_bar(status_text, run_state["start_time"]),
+                        unsafe_allow_html=True,
+                    )
+                    st.toast(f"✅ {tool} returned results", icon="✅")
                 elif etype == "hitl_interrupt":
                     hitl_event = event
                     run_state["hitl_event"] = event
+                    status_text = "Research Paused — Awaiting Plan Approval"
+                    status_ph.markdown(
+                        _render_status_bar(status_text, run_state["start_time"]),
+                        unsafe_allow_html=True,
+                    )
                     server_thread_id = event.get("thread_id", "")
                     if server_thread_id and server_thread_id != placeholder_id:
                         real_run_id = server_thread_id
@@ -815,9 +878,18 @@ def _run_research(query: str, profile: str):
                     real_run_id = event.get("run_id", placeholder_id)
                     run_state["status"] = "completed"
                     completed = True
-                    activity_ph.markdown(
-                        '<div class="live-activity"><span class="status-dot completed"></span>'
-                        " Research Complete!</div>",
+                    elapsed_frozen = time.perf_counter() - (
+                        run_state["start_time"] or time.perf_counter()
+                    )
+                    run_state["elapsed_frozen"] = elapsed_frozen
+                    status_text = "Research Complete! PDF Report Generated."
+                    status_ph.markdown(
+                        _render_status_bar(
+                            status_text,
+                            run_state["start_time"],
+                            is_completed=True,
+                            elapsed_frozen=elapsed_frozen,
+                        ),
                         unsafe_allow_html=True,
                     )
                     st.toast("🏁 Research completed!", icon="🎉")
@@ -895,10 +967,26 @@ def _render_run_viewer(run_id: str, runs: list[dict]):
     status = run_meta.get("status", "unknown")
 
     st.markdown(
-        f'<div class="glass-panel">'
-        f'<h3 style="margin-top:0;">📋 {query}</h3>'
+        f'<div class="white-panel">'
+        f'<h3 style="margin-top:0;color:#0969da;">📋 {html.escape(query)}</h3>'
         f"{_status_pill(status)}"
         f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    status_str = (
+        "Research Complete! PDF Report Generated."
+        if status == "completed"
+        else f"Run Status: {status.title()}"
+    )
+    elapsed_frozen = local_state.get("elapsed_frozen") if local_state else None
+    st.markdown(
+        _render_status_bar(
+            status_str,
+            local_state.get("start_time") if local_state else None,
+            is_completed=(status == "completed"),
+            elapsed_frozen=elapsed_frozen,
+        ),
         unsafe_allow_html=True,
     )
 
@@ -1076,7 +1164,7 @@ def _render_empty_state():
     c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown(
-            '<div class="glass-panel animate-in">'
+            '<div class="white-panel animate-in">'
             '<h4 style="margin-top:0;">🧠 Intelligent Research</h4>'
             "<p>Planner-Executor-Critic loop decomposes queries, gathers multi-source evidence, "
             "and iterates until quality thresholds are met.</p>"
@@ -1085,7 +1173,7 @@ def _render_empty_state():
         )
     with c2:
         st.markdown(
-            '<div class="glass-panel animate-in">'
+            '<div class="white-panel animate-in">'
             '<h4 style="margin-top:0;">🔧 MCP Architecture</h4>'
             "<p>Three independent MCP servers (Web, arXiv, GitHub) over HTTP/SSE with "
             "JWT auth, SQLite caching, and per-tool circuit breakers.</p>"
@@ -1094,7 +1182,7 @@ def _render_empty_state():
         )
     with c3:
         st.markdown(
-            '<div class="glass-panel animate-in">'
+            '<div class="white-panel animate-in">'
             '<h4 style="margin-top:0;">📊 Full Observability</h4>'
             "<p>Every run is traced: node latency, token costs, tool success rates, "
             "and quality scores — all captured in SQLite.</p>"
@@ -1117,7 +1205,12 @@ def _resume_research_stream(run_id: str):
     if not run_state.get("start_time"):
         run_state["start_time"] = time.perf_counter()
 
-    activity_ph = st.empty()
+    status_ph = st.empty()
+    status_text = "Resuming research pipeline..."
+    status_ph.markdown(
+        _render_status_bar(status_text, run_state["start_time"]),
+        unsafe_allow_html=True,
+    )
 
     st.markdown("### 🧠 Full Agent Chain & Thought Process Trace")
     log_ph = st.empty()
@@ -1170,23 +1263,46 @@ def _resume_research_stream(run_id: str):
                     run_state["node_count"] += 1
                     node = event.get("node", "Agent")
                     label = _NODE_LABELS.get(node, node)
-                    activity_ph.markdown(
-                        f'<div class="live-activity"><span class="status-dot running"></span>'
-                        f" Active Phase: <b>{label}</b></div>",
+                    desc = _NODE_DESCRIPTIONS.get(node, "Processing step...")
+                    status_text = f"{label} — {desc}"
+                    status_ph.markdown(
+                        _render_status_bar(status_text, run_state["start_time"]),
                         unsafe_allow_html=True,
                     )
                     st.toast(f"🔄 {label} started", icon="🔄")
                 elif etype == "tool_call":
                     run_state["tool_count"] += 1
+                    tool = event.get("tool", "tool")
+                    status_text = f"Invoking {tool}..."
+                    status_ph.markdown(
+                        _render_status_bar(status_text, run_state["start_time"]),
+                        unsafe_allow_html=True,
+                    )
                 elif etype == "tool_result":
                     run_state["source_count"] += event.get("count", 0)
-                    st.toast(f"✅ {event.get('tool', 'Tool')} returned results", icon="✅")
+                    tool = event.get("tool", "tool")
+                    count = event.get("count", 0)
+                    status_text = f"Retrieved {count} results from {tool}"
+                    status_ph.markdown(
+                        _render_status_bar(status_text, run_state["start_time"]),
+                        unsafe_allow_html=True,
+                    )
+                    st.toast(f"✅ {tool} returned results", icon="✅")
                 elif etype == "complete":
                     run_state["status"] = "completed"
                     completed = True
-                    activity_ph.markdown(
-                        '<div class="live-activity"><span class="status-dot completed"></span>'
-                        " Research Complete!</div>",
+                    elapsed_frozen = time.perf_counter() - (
+                        run_state["start_time"] or time.perf_counter()
+                    )
+                    run_state["elapsed_frozen"] = elapsed_frozen
+                    status_text = "Research Complete! PDF Report Generated."
+                    status_ph.markdown(
+                        _render_status_bar(
+                            status_text,
+                            run_state["start_time"],
+                            is_completed=True,
+                            elapsed_frozen=elapsed_frozen,
+                        ),
                         unsafe_allow_html=True,
                     )
                     st.toast("🏁 Research completed!", icon="🎉")

@@ -10,6 +10,8 @@ app start-up so all pages inherit the same visual identity.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta, timezone
+
 import streamlit as st
 
 # ────────────────────────── Color Palette ─────────────────────────────────────
@@ -493,6 +495,92 @@ code, pre, [data-testid="stCode"] {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ─── Hide Close Button on st.dialog Modal ─── */
+[data-testid="stDialog"] button[aria-label="Close"],
+[data-testid="stModal"] button[aria-label="Close"],
+div[role="dialog"] button[aria-label="Close"],
+div[role="dialog"] button[data-testid="stBaseButton-headerNoPadding"],
+div[role="dialog"] header button {
+    display: none !important;
+}
+
+/* ─── Crisp White Professional Landing Panel ─── */
+.white-panel {
+    background: #ffffff !important;
+    border: 1px solid #d0d7de !important;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    color: #1f2328 !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.white-panel:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+.white-panel h4 {
+    color: #0969da !important;
+    font-weight: 700;
+    margin-top: 0;
+    margin-bottom: 0.6rem;
+    font-size: 1.1rem;
+}
+.white-panel p {
+    color: #57606a !important;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    margin: 0;
+}
+
+/* ─── Live Status Bar & Stopwatch Badge ─── */
+.status-bar-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #ffffff;
+    border: 1px solid #0969da;
+    border-left: 5px solid #0969da;
+    border-radius: 10px;
+    padding: 0.75rem 1.2rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 8px rgba(9, 105, 218, 0.1);
+}
+.status-bar-text {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: #1f2328;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.status-bar-text b {
+    color: #0969da;
+}
+.stopwatch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #f6f8fa;
+    border: 1px solid #d0d7de;
+    border-radius: 20px;
+    padding: 0.3rem 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #0969da;
+}
+.stopwatch-badge.running {
+    border-color: #3fb950;
+    color: #1a7f37;
+    background: #dafbe1;
+}
+.stopwatch-badge.stopped {
+    border-color: #8250df;
+    color: #8250df;
+    background: #f3e8ff;
+}
 </style>
 """
 
@@ -530,3 +618,33 @@ def source_badge(source_type: str) -> str:
 def status_dot(status: str) -> str:
     """Return an HTML status indicator dot."""
     return f'<span class="status-dot {status}"></span>'
+
+
+_IST_TZ = timezone(timedelta(hours=5, minutes=30))
+
+
+def format_ist(dt_input: str | datetime | float | int | None, fmt: str = "%I:%M:%S %p IST") -> str:
+    """Convert any UTC/ISO datetime string, float epoch, or datetime object to Indian Standard Time (IST)."""
+    if not dt_input:
+        return datetime.now(_IST_TZ).strftime(fmt)
+    try:
+        if isinstance(dt_input, (int, float)):
+            dt = datetime.fromtimestamp(dt_input, tz=UTC)
+        elif isinstance(dt_input, str):
+            s = dt_input.strip()
+            if s.isdigit() or (s.replace(".", "", 1).isdigit() and s.count(".") == 1):
+                dt = datetime.fromtimestamp(float(s), tz=UTC)
+            else:
+                s_clean = s.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(s_clean)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+        elif isinstance(dt_input, datetime):
+            dt = dt_input
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+        else:
+            return str(dt_input)
+        return dt.astimezone(_IST_TZ).strftime(fmt)
+    except Exception:
+        return str(dt_input)
