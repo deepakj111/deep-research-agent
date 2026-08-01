@@ -396,16 +396,26 @@ async def _stream_graph_events(
             elif kind == "on_chain_end" and event["name"] == "writer":
                 yield sse({"type": "complete", "run_id": run_id, "timestamp": now_iso})
 
-        # Event stream ended. Check if paused at supervisor for auto-resume.
+        # Event stream ended. Check if graph completed or paused at supervisor.
         state_snapshot = graph.get_state(thread_config)
-        if state_snapshot and state_snapshot.next == ("supervisor",):
-            values = state_snapshot.values
-            meta = values.get("run_metadata")
-            iteration = meta.iteration_count if meta else 0
-            if iteration > 0:
-                # Auto-resume follow-up iterations
-                input_payload = None
-                continue
+        if state_snapshot:
+            if state_snapshot.values and (
+                state_snapshot.values.get("final_report") or not state_snapshot.next
+            ):
+                yield sse({
+                    "type": "complete",
+                    "run_id": run_id,
+                    "timestamp": time.strftime("%H:%M:%S"),
+                })
+                break
+            if state_snapshot.next == ("supervisor",):
+                values = state_snapshot.values
+                meta = values.get("run_metadata")
+                iteration = meta.iteration_count if meta else 0
+                if iteration > 0:
+                    # Auto-resume follow-up iterations
+                    input_payload = None
+                    continue
         # Either not paused at supervisor, or iteration == 0 (needs HITL) — stop streaming
         break
 
@@ -488,8 +498,13 @@ async def stream_research(payload: ResearchRequest, request: Request, tracer=Dep
                     })
 
         finally:
-            if writer_completed:
-                await _finalize_run(run_id, thread_config, run_start, tracer)
+            snapshot = graph.get_state(thread_config)
+            if writer_completed or (
+                snapshot
+                and snapshot.values
+                and (snapshot.values.get("final_report") or not snapshot.next)
+            ):
+                await _finalize_run(run_id, thread_config, run_start, tracer, status="completed")
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -540,8 +555,15 @@ async def approve_plan(request: ApproveRequest, tracer=Depends(get_tracer)):
                 if '"type": "complete"' in chunk:
                     writer_completed = True
         finally:
-            if writer_completed:
-                await _finalize_run(request.thread_id, thread_config, run_start, tracer)
+            snapshot = graph.get_state(thread_config)
+            if writer_completed or (
+                snapshot
+                and snapshot.values
+                and (snapshot.values.get("final_report") or not snapshot.next)
+            ):
+                await _finalize_run(
+                    request.thread_id, thread_config, run_start, tracer, status="completed"
+                )
 
     return StreamingResponse(resume_generator(), media_type="text/event-stream")
 

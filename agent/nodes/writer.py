@@ -1,23 +1,95 @@
 # agent/nodes/writer.py
 """
-Report finalization with grounding verification.
+Report finalization with grounding verification and LLM content filtering.
 
 After the synthesizer produces a report, the writer:
-  1. Builds citations from the actual retrieved findings.
-  2. Verifies that every claim in the report's key_findings is grounded
+  1. Filters out intermediate operational noise, tool error logs, and web scraping artifacts using an LLM pass.
+  2. Builds citations from the actual retrieved findings.
+  3. Verifies that every claim in the report's key_findings is grounded
      in the retrieved sources (anti-hallucination check).
-  3. Downgrades confidence on ungrounded claims and logs a warning.
-  4. Deduplicates citations by URL.
+  4. Downgrades confidence on ungrounded claims and logs a warning.
+  5. Deduplicates citations by URL.
 """
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import logging
+from pathlib import Path
+
+import yaml
+from langchain.chat_models import init_chat_model
 
 from agent.nodes.critic import score_source_trust
+from agent.nodes.synthesizer import SynthesisOutput
 from agent.state import Citation, Finding, ReportOutput, ResearchState
+from config.settings import settings
+from utils.callbacks import TokenCostCallback
 
 logger = logging.getLogger(__name__)
+
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+with open(_PROMPTS_DIR / "writer.yaml") as f:
+    _prompts = yaml.safe_load(f)
+
+FILTER_SYSTEM = _prompts["filter_system"]
+FILTER_USER = _prompts["filter_user"]
+
+
+@functools.lru_cache(maxsize=1)
+def _get_filter_llm():
+    return init_chat_model(settings.default_model, temperature=0.0).with_structured_output(
+        SynthesisOutput
+    )
+
+
+async def _filter_report_with_llm(report: ReportOutput, query: str, meta=None) -> ReportOutput:
+    """Pass report through an LLM filtering step to remove intermediate noise & tool artifacts."""
+    try:
+        llm = _get_filter_llm()
+        cb = TokenCostCallback()
+        key_findings_str = "\n".join([f"- {kf.claim}" for kf in report.key_findings])
+        emerging_trends_str = "\n".join([f"- {et}" for et in report.emerging_trends])
+
+        user_msg = FILTER_USER.format(
+            query=query,
+            title=report.title,
+            executive_summary=report.executive_summary,
+            introduction=report.introduction,
+            detailed_analysis=report.detailed_analysis,
+            key_findings=key_findings_str,
+            emerging_trends=emerging_trends_str,
+        )
+
+        filtered_out: SynthesisOutput = await asyncio.wait_for(
+            llm.ainvoke(
+                [
+                    {"role": "system", "content": FILTER_SYSTEM},
+                    {"role": "user", "content": user_msg},
+                ],
+                config={"callbacks": [cb]},
+            ),
+            timeout=20.0,
+        )
+
+        if meta:
+            meta.total_input_tokens += cb.total_input_tokens
+            meta.total_output_tokens += cb.total_output_tokens
+            meta.estimated_cost_usd += cb.total_cost_usd
+
+        if filtered_out:
+            report.title = filtered_out.title or report.title
+            report.executive_summary = filtered_out.executive_summary or report.executive_summary
+            report.introduction = filtered_out.introduction or report.introduction
+            report.detailed_analysis = filtered_out.detailed_analysis or report.detailed_analysis
+            if filtered_out.emerging_trends:
+                report.emerging_trends = filtered_out.emerging_trends
+    except Exception as exc:
+        logger.warning("[Writer] LLM report filtering skipped/failed: %s", exc)
+
+    return report
 
 
 def _build_citations(findings) -> list[Citation]:
@@ -136,6 +208,14 @@ async def run(state: ResearchState) -> dict:
             "error_log": ["[Writer] No report to write — synthesizer produced None."],
             "thought_log": ["[Writer] Skipped — no report available."],
         }
+
+    meta = state.get("run_metadata")
+    query = state.get("query", "")
+
+    # ── LLM Quality & Operational Noise Filter ─────────────────────────────
+    # Filter out intermediate operational artifacts, tool execution error logs,
+    # and web boilerplate text to ensure publication-ready output.
+    report = await _filter_report_with_llm(report, query, meta=meta)
 
     findings = state.get("findings", [])
     citations = _build_citations(findings)

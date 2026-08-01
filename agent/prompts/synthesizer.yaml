@@ -26,5 +26,7 @@ synthesis_prompt: |
      - Maintain an executive, neutral, highly informative tone (like top investment bank research or McKinsey reports).
      - NEVER include meta-commentary, process descriptions, LLM disclaimers, or "what to do next" reader advice.
      - Ensure perfect grammar and natural sentence flow throughout all sections.
+  7. **Exclude Intermediate Operational Noise**:
+     - Do NOT include tool error logs, internal pipeline execution details, sub-question processing notes, or web boilerplate text anywhere in the report.
 
   OUTPUT FORMAT: Return structured JSON matching the required SynthesisOutput schema.

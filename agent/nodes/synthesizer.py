@@ -97,9 +97,6 @@ def build_synthesis_context(findings: list[Any]) -> str:
                 section.append("**GitHub Repos:**")
                 section.extend(repo_lines)
 
-        if f.tool_errors:
-            section.append(f"**Errors (graceful degradation):** {', '.join(f.tool_errors)}")
-
         if len(section) > 1:
             sections.append("\n".join(section))
 

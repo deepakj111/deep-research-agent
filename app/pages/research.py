@@ -922,6 +922,11 @@ def _run_research(query: str, profile: str):
         st.session_state.active_run_id = real_run_id
         run_state = st.session_state.run_states[real_run_id]
 
+    # Check if report is ready on server even if complete SSE event was missed
+    if not completed and _fetch_formatted_report(real_run_id):
+        run_state["status"] = "completed"
+        completed = True
+
     # Refresh history sidebar
     st.session_state.runs_cache = _fetch_runs()
 
@@ -965,6 +970,13 @@ def _render_run_viewer(run_id: str, runs: list[dict]):
     run_meta = next((r for r in runs if r.get("run_id") == run_id), {})
     query = run_meta.get("query", "Unknown query")
     status = run_meta.get("status", "unknown")
+
+    # Check if report is available to override status if DB had not updated yet
+    formatted_report_text = _fetch_formatted_report(run_id)
+    if formatted_report_text or (local_state and local_state.get("status") == "completed"):
+        status = "completed"
+        if local_state:
+            local_state["status"] = "completed"
 
     st.markdown(
         f'<div class="white-panel">'
@@ -1327,6 +1339,11 @@ def _resume_research_stream(run_id: str):
     except Exception as e:
         st.error(f"❌ Stream error: {type(e).__name__}: {str(e)[:300]}")
         return
+
+    # Check if report is ready on server even if complete SSE event was missed
+    if not completed and _fetch_formatted_report(run_id):
+        run_state["status"] = "completed"
+        completed = True
 
     st.session_state.runs_cache = _fetch_runs()
 
