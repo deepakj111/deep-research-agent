@@ -513,7 +513,7 @@ def _format_thought_card(event: dict) -> str | None:
 # ────────────────────────── HITL Dialog ───────────────────────────────────────
 
 
-@st.dialog("⏸️ Research Plan — Awaiting Approval", width="large")
+@st.dialog("⏸️ Research Plan — Awaiting Approval", width="large", dismissible=False)
 def _hitl_dialog(hitl_event: dict, run_id: str):
     """Render the HITL approval as a real st.dialog modal popup."""
     difficulty = hitl_event.get("query_difficulty", "?")
