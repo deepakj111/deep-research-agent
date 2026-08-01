@@ -1,8 +1,8 @@
-name: fast
-description: "Quick scan: 2-4 min, focused web sources"
-max_web_results: 5
-max_arxiv_papers: 0
-max_github_repos: 2
-max_iterations: 1
-synthesis_depth: brief
+name: deep
+description: "Comprehensive research: 1-2 min"
+max_web_results: 6
+max_arxiv_papers: 4
+max_github_repos: 4
+max_iterations: 2
+synthesis_depth: comprehensive
 query_decomposition: breadth-first

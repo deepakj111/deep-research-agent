@@ -681,7 +681,7 @@ def _render_new_research():
         )
 
     if submitted and query.strip():
-        _run_research(query.strip(), profile="fast")
+        _run_research(query.strip(), profile="deep")
 
 
 def _fetch_formatted_report(run_id: str) -> str:

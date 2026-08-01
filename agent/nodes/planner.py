@@ -67,10 +67,7 @@ async def _invoke_planner_llm(llm, messages, callbacks=None):
 async def run(state: ResearchState) -> dict:
     difficulty = state.get("query_difficulty", "narrow")
     n = NUM_QUESTIONS.get(difficulty, 3)
-    profile_name = state.get("profile", "fast")
-    if profile_name == "fast":
-        n = min(n, 3)
-
+    profile_name = state.get("profile", "deep")
     profile_cfg = load_profile(profile_name)
     strategy_key = profile_cfg.get("query_decomposition", "breadth-first")
     strategy_text = STRATEGIES.get(strategy_key, STRATEGIES["breadth-first"]).format(n=n)

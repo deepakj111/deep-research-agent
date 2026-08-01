@@ -209,7 +209,7 @@ class TestRunsEndpoint:
             {
                 "run_id": "test-run",
                 "query": "test",
-                "profile": "fast",
+                "profile": "deep",
                 "status": "completed",
                 "started_at": "2026-01-01T00:00:00",
                 "total_cost_usd": 0.05,

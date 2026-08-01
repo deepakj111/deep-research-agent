@@ -31,7 +31,7 @@ def sample_findings(sample_web_result):
 def sample_state(sample_findings):
     return ResearchState(
         query="Test research query",
-        profile="fast",
+        profile="deep",
         run_id="test-run-001",
         query_difficulty="narrow",
         subquestions=["What are the latest developments?"],
@@ -40,7 +40,7 @@ def sample_state(sample_findings):
         critique=None,
         iteration_count=0,
         final_report=None,
-        run_metadata=RunMetadata(run_id="test-run-001", profile="fast"),
+        run_metadata=RunMetadata(run_id="test-run-001", profile="deep"),
         error_log=[],
         thought_log=[],
     )

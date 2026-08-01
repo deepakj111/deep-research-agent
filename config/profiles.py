@@ -32,9 +32,10 @@ class ProfileConfig(BaseModel):
 
 
 @functools.lru_cache(maxsize=16)
-def load_profile(name: str) -> dict[str, Any]:
+def load_profile(name: str = "deep") -> dict[str, Any]:
     """Load a research profile YAML by name, validate it, and return as dict."""
-    with open(_PROFILES_DIR / f"{name}.yaml") as f:
+    profile_name = "deep" if name in ("fast", "", None) else name
+    with open(_PROFILES_DIR / f"{profile_name}.yaml") as f:
         raw = yaml.safe_load(f)
 
     # Validate against schema to catch typos early

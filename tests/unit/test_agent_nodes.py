@@ -14,7 +14,7 @@ from agent.state import (
 def base_state():
     return ResearchState(
         query="Latest advances in quantum computing 2025",
-        profile="fast",
+        profile="deep",
         run_id="unit-test-001",
         query_difficulty="narrow",
         subquestions=["What are the latest quantum computing breakthroughs?"],
@@ -23,7 +23,7 @@ def base_state():
         critique=None,
         iteration_count=0,
         final_report=None,
-        run_metadata=RunMetadata(run_id="unit-test-001", profile="fast"),
+        run_metadata=RunMetadata(run_id="unit-test-001", profile="deep"),
         error_log=[],
         thought_log=[],
     )
@@ -38,7 +38,7 @@ class TestCriticNode:
     def test_should_continue_returns_synthesize_when_max_iterations(self, base_state):
         from agent.nodes.critic import should_continue
 
-        base_state["run_metadata"] = RunMetadata(run_id="test", profile="fast", iteration_count=15)
+        base_state["run_metadata"] = RunMetadata(run_id="test", profile="deep", iteration_count=15)
         assert should_continue(base_state) == "synthesize"
 
     def test_should_continue_loops_when_critique_says_so(self, base_state):
@@ -53,7 +53,7 @@ class TestCriticNode:
             should_continue=True,
             reasoning="Coverage is insufficient",
         )
-        base_state["run_metadata"] = RunMetadata(run_id="test", profile="fast", iteration_count=2)
+        base_state["run_metadata"] = RunMetadata(run_id="test", profile="deep", iteration_count=2)
         assert should_continue(base_state) == "continue"
 
     @pytest.mark.asyncio
@@ -62,7 +62,7 @@ class TestCriticNode:
         from config.settings import settings
 
         base_state["run_metadata"] = RunMetadata(
-            run_id="test", profile="fast", iteration_count=settings.max_iterations - 1
+            run_id="test", profile="deep", iteration_count=settings.max_iterations - 1
         )
         result = await run(base_state)
 

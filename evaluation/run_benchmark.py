@@ -240,7 +240,7 @@ async def run_single_query(
 
 
 async def run_benchmark(
-    profile: str = "fast",
+    profile: str = "deep",
     fail_below: float = 0.75,
     query_limit: int | None = None,
     query_id: str | None = None,
@@ -315,7 +315,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Run DeepResearch Agent benchmark evaluation",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--profile", default="fast", choices=["fast", "deep"], help="Research profile")
+    p.add_argument("--profile", default="deep", choices=["deep"], help="Research profile")
     p.add_argument(
         "--fail-below",
         type=float,

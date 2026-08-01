@@ -107,7 +107,7 @@ def sse(data: dict) -> str:
 
 class ResearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1500)
-    profile: str = "fast"
+    profile: str = "deep"
 
 
 class ApproveRequest(BaseModel):

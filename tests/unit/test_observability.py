@@ -54,14 +54,14 @@ class TestTracerInit:
 class TestRunLifecycle:
     @pytest.mark.asyncio
     async def test_start_run_creates_record(self, tracer: ResearchTracer) -> None:
-        await tracer.start_run("run-001", "test query", "fast")
+        await tracer.start_run("run-001", "test query", "deep")
         row = tracer._conn.execute(
             "SELECT run_id, query, profile, status FROM runs WHERE run_id = 'run-001'"
         ).fetchone()
         assert row is not None
         assert row[0] == "run-001"
         assert row[1] == "test query"
-        assert row[2] == "fast"
+        assert row[2] == "deep"
         assert row[3] == "running"
 
     @pytest.mark.asyncio
@@ -91,8 +91,8 @@ class TestRunLifecycle:
     @pytest.mark.asyncio
     async def test_start_run_idempotent(self, tracer: ResearchTracer) -> None:
         """Calling start_run twice for the same run_id must not raise or duplicate."""
-        await tracer.start_run("run-003", "q", "fast")
-        await tracer.start_run("run-003", "q", "fast")  # second call — INSERT OR IGNORE
+        await tracer.start_run("run-003", "q", "deep")
+        await tracer.start_run("run-003", "q", "deep")  # second call — INSERT OR IGNORE
         count = tracer._conn.execute(
             "SELECT COUNT(*) FROM runs WHERE run_id = 'run-003'"
         ).fetchone()[0]
@@ -103,7 +103,7 @@ class TestRunLifecycle:
 
     @pytest.mark.asyncio
     async def test_get_run_summary_contains_expected_keys(self, tracer: ResearchTracer) -> None:
-        await tracer.start_run("run-004", "query text", "fast")
+        await tracer.start_run("run-004", "query text", "deep")
         summary = tracer.get_run_summary("run-004")
         expected_keys = {
             "run_id",
@@ -129,7 +129,7 @@ class TestRunLifecycle:
 class TestToolCallLogging:
     @pytest.mark.asyncio
     async def test_successful_tool_call_is_recorded(self, tracer: ResearchTracer) -> None:
-        await tracer.start_run("r1", "q", "fast")
+        await tracer.start_run("r1", "q", "deep")
         await tracer.log_tool_call(
             ToolCallRecord(
                 run_id="r1",
@@ -150,7 +150,7 @@ class TestToolCallLogging:
 
     @pytest.mark.asyncio
     async def test_failed_tool_call_records_error(self, tracer: ResearchTracer) -> None:
-        await tracer.start_run("r2", "q", "fast")
+        await tracer.start_run("r2", "q", "deep")
         await tracer.log_tool_call(
             ToolCallRecord(
                 run_id="r2",
@@ -170,7 +170,7 @@ class TestToolCallLogging:
 
     @pytest.mark.asyncio
     async def test_get_tool_call_stats_aggregates_correctly(self, tracer: ResearchTracer) -> None:
-        await tracer.start_run("r3", "q", "fast")
+        await tracer.start_run("r3", "q", "deep")
         for i in range(3):
             await tracer.log_tool_call(
                 ToolCallRecord(
@@ -197,7 +197,7 @@ class TestToolCallLogging:
 class TestNodeExecutionLogging:
     @pytest.mark.asyncio
     async def test_node_execution_is_recorded(self, tracer: ResearchTracer) -> None:
-        await tracer.start_run("r4", "q", "fast")
+        await tracer.start_run("r4", "q", "deep")
         await tracer.log_node_execution(
             NodeExecutionRecord(
                 run_id="r4",
@@ -225,7 +225,7 @@ class TestEvalScoreLogging:
     async def test_eval_scores_persisted_and_final_score_updated(
         self, tracer: ResearchTracer
     ) -> None:
-        await tracer.start_run("r5", "q", "fast")
+        await tracer.start_run("r5", "q", "deep")
         await tracer.log_eval_scores(
             EvalScoreRecord(
                 run_id="r5",
@@ -258,7 +258,7 @@ class TestEvalScoreLogging:
 class TestTraceToolCallContextManager:
     @pytest.mark.asyncio
     async def test_records_successful_call(self, tracer: ResearchTracer) -> None:
-        await tracer.start_run("r6", "q", "fast")
+        await tracer.start_run("r6", "q", "deep")
 
         async with trace_tool_call(tracer, "r6", "web_agent", "search_web", "test"):
             await asyncio.sleep(0)  # simulate async work
@@ -272,7 +272,7 @@ class TestTraceToolCallContextManager:
 
     @pytest.mark.asyncio
     async def test_records_failed_call_and_reraises(self, tracer: ResearchTracer) -> None:
-        await tracer.start_run("r7", "q", "fast")
+        await tracer.start_run("r7", "q", "deep")
 
         with pytest.raises(RuntimeError, match="tool broke"):
             async with trace_tool_call(tracer, "r7", "arxiv_agent", "fetch_papers", "test"):
@@ -305,7 +305,7 @@ class TestGetRecentRuns:
     @pytest.mark.asyncio
     async def test_recent_runs_returns_correct_count(self, tracer: ResearchTracer) -> None:
         for i in range(5):
-            await tracer.start_run(f"run-{i}", f"query {i}", "fast")
+            await tracer.start_run(f"run-{i}", f"query {i}", "deep")
 
         runs = tracer.get_recent_runs(limit=3)
         assert len(runs) == 3

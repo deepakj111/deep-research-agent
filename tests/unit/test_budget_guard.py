@@ -18,7 +18,7 @@ from agent.state import CritiqueOutput, ResearchState, RunMetadata
 def base_state():
     return ResearchState(
         query="Test query",
-        profile="fast",
+        profile="deep",
         run_id="budget-test-001",
         query_difficulty="narrow",
         subquestions=["Q1"],
@@ -27,7 +27,7 @@ def base_state():
         critique=None,
         iteration_count=0,
         final_report=None,
-        run_metadata=RunMetadata(run_id="budget-test-001", profile="fast"),
+        run_metadata=RunMetadata(run_id="budget-test-001", profile="deep"),
         error_log=[],
         thought_log=[],
     )
@@ -39,7 +39,7 @@ class TestBudgetGuard:
 
         # No critique and low iteration → critic says "synthesize"
         base_state["run_metadata"] = RunMetadata(
-            run_id="test", profile="fast", iteration_count=1, estimated_cost_usd=0.01
+            run_id="test", profile="deep", iteration_count=1, estimated_cost_usd=0.01
         )
         result = check_budget(base_state)
         assert result == "synthesize"
@@ -48,7 +48,7 @@ class TestBudgetGuard:
         from agent.budget_guard import check_budget
 
         base_state["run_metadata"] = RunMetadata(
-            run_id="test", profile="fast", iteration_count=1, estimated_cost_usd=0.01
+            run_id="test", profile="deep", iteration_count=1, estimated_cost_usd=0.01
         )
         base_state["critique"] = CritiqueOutput(
             coverage_score=0.3,
@@ -68,7 +68,7 @@ class TestBudgetGuard:
         # Set iteration count to max
         monkeypatch.setattr("agent.budget_guard.settings.max_iterations", 10)
         base_state["run_metadata"] = RunMetadata(
-            run_id="test", profile="fast", iteration_count=10, estimated_cost_usd=0.01
+            run_id="test", profile="deep", iteration_count=10, estimated_cost_usd=0.01
         )
         # Even if critic says continue, budget guard overrides
         base_state["critique"] = CritiqueOutput(
@@ -87,7 +87,7 @@ class TestBudgetGuard:
 
         monkeypatch.setattr("agent.budget_guard.settings.max_cost_per_run_usd", 1.0)
         base_state["run_metadata"] = RunMetadata(
-            run_id="test", profile="fast", iteration_count=2, estimated_cost_usd=1.5
+            run_id="test", profile="deep", iteration_count=2, estimated_cost_usd=1.5
         )
         base_state["critique"] = CritiqueOutput(
             coverage_score=0.3,

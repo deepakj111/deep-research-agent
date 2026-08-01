@@ -109,9 +109,9 @@ async def _invoke_synth_llm(llm, prompt, callbacks=None):
 
 
 async def run(state: ResearchState) -> dict:
-    profile_name = state.get("profile", "fast")
+    profile_name = state.get("profile", "deep")
     profile_cfg = load_profile(profile_name)
-    synthesis_depth = profile_cfg.get("synthesis_depth", "brief")
+    synthesis_depth = profile_cfg.get("synthesis_depth", "comprehensive")
 
     context = build_synthesis_context(state.get("findings", []))
     prompt = SYNTHESIS_PROMPT.format(

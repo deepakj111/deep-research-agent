@@ -59,7 +59,7 @@ async def run(state: ResearchState) -> dict | Command:
 
     relevant_sources = state.get("relevant_sources", ["web", "arxiv", "github"])
     payload_base = {
-        "profile": state.get("profile", "fast"),
+        "profile": state.get("profile", "deep"),
         "run_id": state.get("run_id", ""),
     }
 

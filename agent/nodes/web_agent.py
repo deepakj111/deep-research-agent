@@ -21,7 +21,7 @@ async def run(state: ResearchState) -> dict:
     subquestions = state.get("subquestions", [])
     subquestion = subquestions[0] if subquestions else ""
 
-    profile = load_profile(state.get("profile", "fast"))
+    profile = load_profile(state.get("profile", "deep"))
     max_results = profile.get("max_web_results", 3)
     run_id = state.get("run_id", "")
 

@@ -61,7 +61,7 @@ async def run(state: ResearchState) -> dict:
     meta = state.get("run_metadata")
     iteration_count = meta.iteration_count if meta else 0
 
-    profile_name = state.get("profile", "fast")
+    profile_name = state.get("profile", "deep")
 
     try:
         from config.profiles import load_profile  # noqa: PLC0415

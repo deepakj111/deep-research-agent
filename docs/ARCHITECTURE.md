@@ -209,7 +209,7 @@ The agent state is a `TypedDict` defined in `agent/state.py`:
 ```python
 class ResearchState(TypedDict):
     query: str  # Input
-    profile: str  # "fast" or "deep"
+    profile: str  # "deep"
     run_id: str
     query_difficulty: str  # "narrow" | "broad" | "ambiguous"
     relevant_sources: list[str]  # Selected source types: ["web", "arxiv", "github"]

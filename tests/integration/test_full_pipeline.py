@@ -35,7 +35,7 @@ async def test_classifier_node_runs():
     with patch("agent.nodes.classifier._get_llm", return_value=mock_llm):
         state = ResearchState(
             query="quantum computing",
-            profile="fast",
+            profile="deep",
             run_id="int-test-001",
             query_difficulty="",
             subquestions=[],
@@ -44,7 +44,7 @@ async def test_classifier_node_runs():
             critique=None,
             iteration_count=0,
             final_report=None,
-            run_metadata=RunMetadata(run_id="int-test-001", profile="fast"),
+            run_metadata=RunMetadata(run_id="int-test-001", profile="deep"),
             error_log=[],
             thought_log=[],
         )
