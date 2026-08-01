@@ -47,7 +47,8 @@ Query: {query}
   Examples of queries that should NOT use arxiv: "silver investment", "best ETFs 2025", "AI startups to watch",
   "housing market trends", "how does GPT work", "cloud computing cost comparison"
 
-- github: ONLY select when the query involves software implementations, open-source libraries, APIs, or code.
+- github: ALWAYS select when the query involves software implementations, developer tools, open-source libraries, AI frameworks (e.g., LangGraph, LangChain, PyTorch, React, Next.js), APIs, release updates, or code.
+  Examples of queries that SHOULD use github: "langgraph latest updates", "fastapi release notes", "react 19 features", "open source LLM repos".
   NEVER select for finance, market research, news, or non-software topics.
 
 Output JSON matching the schema."""

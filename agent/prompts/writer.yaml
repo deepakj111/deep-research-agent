@@ -7,8 +7,9 @@ filter_system: |
   2. Any web scraping noise, navigation menu text, cookie banner residue, or irrelevant website headers/footers.
   3. Any meta-commentary, prompt artifacts, disclaimers about LLMs, or "as an AI model" statements.
   4. Any duplicated or low-quality filler sentences.
+  5. Any domain-inappropriate section headers or terminology (e.g., replace/remove financial, macroeconomic, or supply-demand headers if the query is about software, technology, science, or general topics).
 
-  Retain and polish all substantive facts, data points, citations, and analytical insights.
+  Retain and polish all substantive facts, data points, citations, and analytical insights tailored to the query topic.
   Output JSON matching the required SynthesisOutput schema.
 
 filter_user: |
