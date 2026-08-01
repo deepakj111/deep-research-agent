@@ -8,6 +8,8 @@ services:
     environment:
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - MCP_JWT_SECRET=${MCP_JWT_SECRET}
+    volumes:
+      - ./.cache.db:/app/web_search/.cache.db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
@@ -27,6 +29,8 @@ services:
       - "8002:8002"
     environment:
       - MCP_JWT_SECRET=${MCP_JWT_SECRET}
+    volumes:
+      - ./.arxiv_cache.db:/app/arxiv/.arxiv_cache.db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 10s
@@ -47,6 +51,8 @@ services:
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - MCP_JWT_SECRET=${MCP_JWT_SECRET}
+    volumes:
+      - ./.github_cache.db:/app/github/.github_cache.db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 10s
@@ -73,6 +79,9 @@ services:
       - WEB_SEARCH_MCP_URL=http://web-search-mcp:8001/sse
       - ARXIV_MCP_URL=http://arxiv-mcp:8002/sse
       - GITHUB_MCP_URL=http://github-mcp:8003/sse
+    volumes:
+      - ./.research_runs.db:/app/.research_runs.db
+      - ./.checkpoints.db:/app/.checkpoints.db
     depends_on:
       web-search-mcp:
         condition: service_healthy

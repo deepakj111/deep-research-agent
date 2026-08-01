@@ -1,6 +1,7 @@
 .PHONY: run dev test benchmark lint build clean security audit docker-test
 
 run:
+	@touch .research_runs.db .checkpoints.db .cache.db .arxiv_cache.db .github_cache.db
 	docker compose up --build
 
 dev:
